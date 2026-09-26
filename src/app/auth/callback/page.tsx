@@ -2,24 +2,26 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
-import { restoreSession } from '@/lib/api';
 import { useSession } from '@/lib/session';
 
 /* Where Google sends a returning user.
 
-   The API has already set the refresh cookie by the time this loads. All this
-   page does is trade that cookie for an access token and move on. It exists so
-   no token has to travel in the URL, where it would end up in browser history,
-   referrer headers and server logs. */
+   The API has already set the refresh cookie by the time this loads, and
+   SessionProvider is already trading it for an access token. This page waits
+   for that and then moves on.
+
+   It deliberately does not refresh on its own. Doing so was the bug: two
+   refreshes on one page load meant the second presented an already rotated
+   token, which the API correctly read as a stolen one and responded to by
+   ending every session. */
 export default function AuthCallbackPage() {
   const router = useRouter();
-  const { setSession } = useSession();
+  const { user, loading } = useSession();
 
   useEffect(() => {
-    restoreSession()
-      .then((session) => router.replace(session ? '/dashboard' : '/login?error=google_failed'))
-      .catch(() => router.replace('/login?error=google_failed'));
-  }, [router, setSession]);
+    if (loading) return;
+    router.replace(user ? '/dashboard' : '/login?error=google_failed');
+  }, [loading, user, router]);
 
   return (
     <div className="centre">

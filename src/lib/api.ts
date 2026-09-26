@@ -86,7 +86,18 @@ export type User = {
 export type Business = { id: string; name: string; province?: string };
 export type Session = { accessToken: string; user: User; business: Business };
 
-async function refresh(): Promise<Session | null> {
+/* Refreshing is deduplicated across the whole app.
+
+   The refresh token is rotated on use, so sending the same one twice looks
+   like a stolen token to the API. Two callers refreshing at once, which is
+   easy to cause with a provider and a page both restoring on mount, would
+   present the old token the second time and get the session killed.
+
+   So every caller shares one in flight request. The second one waits for the
+   first rather than starting its own. */
+let inFlight: Promise<Session | null> | null = null;
+
+async function doRefresh(): Promise<Session | null> {
   const res = await fetch(`${BASE_URL}/api/auth/refresh`, {
     method: 'POST',
     credentials: 'include',
@@ -98,6 +109,13 @@ async function refresh(): Promise<Session | null> {
   const session = (await res.json()) as Session;
   setAccessToken(session.accessToken);
   return session;
+}
+
+function refresh(): Promise<Session | null> {
+  inFlight ??= doRefresh().finally(() => {
+    inFlight = null;
+  });
+  return inFlight;
 }
 
 export const restoreSession = refresh;
