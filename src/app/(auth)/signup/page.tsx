@@ -17,10 +17,19 @@ import { GoogleMark, Icon } from '@/components/icon';
 import { ApiError, googleSignInUrl, signUp } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { PROVINCES, findProvince } from '@/lib/tax';
+import * as v from '@/lib/validation';
+import { applyServerErrors, useField, validateAll } from '@/lib/use-field';
 
 /* Two steps, not one long form. The mockup notes give the reason: long forms
    are where older users give up, and the second step exists only because the
-   province genuinely changes how the product behaves. */
+   province genuinely changes how the product behaves.
+
+   Step one will not let you past until it is actually valid. Letting someone
+   fill in a whole form and only then telling them the email was malformed is
+   how people abandon signup. */
+
+const firstNameRule = v.personName('first name');
+const lastNameRule = v.personName('last name');
 
 function Steps({ current }: { current: 1 | 2 }) {
   const labels = ['Your details', 'Your business', 'Choose a plan'] as const;
@@ -49,52 +58,54 @@ export default function SignupPage() {
 
   const [step, setStep] = useState<1 | 2>(1);
   const [busy, setBusy] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
   const [problem, setProblem] = useState<string | null>(null);
 
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [businessName, setBusinessName] = useState('');
-  const [province, setProvince] = useState('ON');
+  const firstName = useField('', firstNameRule);
+  const lastName = useField('', lastNameRule);
+  const email = useField('', v.email);
+  const password = useField('', v.password);
+  const businessName = useField('', v.businessName);
 
+  const [province, setProvince] = useState('ON');
   const tax = findProvince(province);
+
+  const byName = { firstName, lastName, email, password, businessName };
 
   function goToStep2(e: React.FormEvent) {
     e.preventDefault();
-    const found: Record<string, string> = {};
-    if (!firstName.trim()) found.firstName = 'Enter your first name.';
-    if (!lastName.trim()) found.lastName = 'Enter your last name.';
-    if (!email.trim()) found.email = 'Enter your email address.';
-    if (password.length < 10) found.password = 'Passwords must be at least 10 characters long.';
-    setErrors(found);
-    if (Object.keys(found).length === 0) {
-      setStep(2);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
+    if (!validateAll([firstName, lastName, email, password])) return;
+    setStep(2);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setErrors({});
     setProblem(null);
-    setBusy(true);
+    if (!validateAll([businessName])) return;
 
+    setBusy(true);
     try {
-      setSession(await signUp({ firstName, lastName, email, password, businessName, province }));
+      setSession(
+        await signUp({
+          firstName: firstName.value.trim(),
+          lastName: lastName.value.trim(),
+          email: email.value.trim(),
+          password: password.value,
+          businessName: businessName.value.trim(),
+          province,
+        }),
+      );
       router.push('/signup/plan');
     } catch (err) {
       if (err instanceof ApiError) {
-        if (err.fields) {
-          setErrors(err.fields);
-          /* An email problem belongs to step one, so send them back to the box
-             that needs fixing rather than showing an error they cannot reach. */
-          if (err.fields.email || err.fields.password) setStep(1);
-        } else {
-          setProblem(err.message);
-          if (err.code === 'email_taken') setStep(1);
-        }
+        applyServerErrors(byName, err.fields);
+        if (!err.fields) setProblem(err.message);
+        /* Send them back to the step that holds the broken field, or they
+           will be looking at an error they cannot see. */
+        const onStepOne =
+          err.code === 'email_taken' ||
+          Boolean(err.fields?.email ?? err.fields?.password ?? err.fields?.firstName ?? err.fields?.lastName);
+        if (onStepOne) setStep(1);
       } else {
         setProblem('We could not reach the server. Check your connection and try again.');
       }
@@ -119,8 +130,7 @@ export default function SignupPage() {
       {problem && (
         <div style={{ marginBottom: 4 }}>
           <Notice tone="err" icon="alert">
-            {problem}{' '}
-            {problem.includes('already exists') && <Link href="/login">Sign in instead</Link>}
+            {problem} {problem.includes('already exists') && <Link href="/login">Sign in instead</Link>}
           </Notice>
         </div>
       )}
@@ -145,22 +155,24 @@ export default function SignupPage() {
 
           <form className="rise d3" onSubmit={goToStep2} noValidate>
             <div className="field-row">
-              <Field label="First name" required error={errors.firstName}>
+              <Field label="First name" required error={firstName.error ?? undefined}>
                 <TextInput
                   id="firstName"
                   autoComplete="given-name"
-                  value={firstName}
-                  invalid={!!errors.firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
+                  value={firstName.value}
+                  invalid={!!firstName.error}
+                  onChange={(e) => firstName.set(e.target.value)}
+                  onBlur={firstName.onBlur}
                 />
               </Field>
-              <Field label="Last name" required error={errors.lastName}>
+              <Field label="Last name" required error={lastName.error ?? undefined}>
                 <TextInput
                   id="lastName"
                   autoComplete="family-name"
-                  value={lastName}
-                  invalid={!!errors.lastName}
-                  onChange={(e) => setLastName(e.target.value)}
+                  value={lastName.value}
+                  invalid={!!lastName.error}
+                  onChange={(e) => lastName.set(e.target.value)}
+                  onBlur={lastName.onBlur}
                 />
               </Field>
             </div>
@@ -168,7 +180,7 @@ export default function SignupPage() {
             <Field
               label="Email address"
               required
-              error={errors.email}
+              error={email.error ?? undefined}
               hint="This is what you will sign in with."
             >
               <div className="control">
@@ -178,23 +190,25 @@ export default function SignupPage() {
                   inputMode="email"
                   autoComplete="username"
                   placeholder="you@yourbusiness.ca"
-                  value={email}
-                  invalid={!!errors.email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={email.value}
+                  invalid={!!email.error}
+                  onChange={(e) => email.set(e.target.value)}
+                  onBlur={email.onBlur}
                 />
               </div>
             </Field>
 
-            <Field label="Password" required error={errors.password}>
+            <Field label="Password" required error={password.error ?? undefined}>
               <PasswordInput
                 id="password"
                 autoComplete="new-password"
                 placeholder="At least 10 characters"
-                value={password}
-                invalid={!!errors.password}
-                onChange={(e) => setPassword(e.target.value)}
+                value={password.value}
+                invalid={!!password.error}
+                onChange={(e) => password.set(e.target.value)}
+                onBlur={password.onBlur}
               />
-              <PasswordMeter value={password} />
+              <PasswordMeter value={password.value} />
             </Field>
 
             <button className="btn btn-primary btn-block" type="submit" style={{ marginTop: 8 }}>
@@ -217,26 +231,23 @@ export default function SignupPage() {
             <Field
               label="Business name"
               required
-              error={errors.businessName}
+              error={businessName.error ?? undefined}
               hint="This is the name that appears on your invoices. You can change it later."
             >
               <TextInput
                 id="businessName"
                 autoComplete="organization"
                 placeholder="For example, Maple Ridge Consulting"
-                value={businessName}
-                invalid={!!errors.businessName}
-                onChange={(e) => setBusinessName(e.target.value)}
+                value={businessName.value}
+                invalid={!!businessName.error}
+                onChange={(e) => businessName.set(e.target.value)}
+                onBlur={businessName.onBlur}
                 autoFocus
               />
             </Field>
 
-            <Field label="Province or territory" required error={errors.province}>
-              <Select
-                id="province"
-                value={province}
-                onChange={(e) => setProvince(e.target.value)}
-              >
+            <Field label="Province or territory" required>
+              <Select id="province" value={province} onChange={(e) => setProvince(e.target.value)}>
                 {PROVINCES.map((p) => (
                   <option key={p.code} value={p.code}>
                     {p.name}
@@ -245,8 +256,6 @@ export default function SignupPage() {
               </Select>
             </Field>
 
-            {/* The rate updates as the province changes. It is the one thing on
-                this screen that shows the product doing work for them. */}
             {tax && (
               <Notice icon="shield" title={`${tax.name}, ${tax.rate}`}>
                 {tax.note}

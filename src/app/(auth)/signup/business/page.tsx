@@ -8,6 +8,8 @@ import { Field, Notice, Select, SubmitButton, TextInput } from '@/components/for
 import { ApiError, completeGoogleSignup } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { PROVINCES, findProvince } from '@/lib/tax';
+import * as v from '@/lib/validation';
+import { applyServerErrors, useField, validateAll } from '@/lib/use-field';
 
 /* The second half of a Google signup.
 
@@ -21,26 +23,32 @@ function BusinessStep() {
   const token = useSearchParams().get('token') ?? '';
   const { setSession } = useSession();
 
-  const [businessName, setBusinessName] = useState('');
+  const businessName = useField('', v.businessName);
   const [province, setProvince] = useState('ON');
   const [busy, setBusy] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
   const [problem, setProblem] = useState<string | null>(null);
 
   const tax = findProvince(province);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
-    setErrors({});
     setProblem(null);
+    if (!validateAll([businessName])) return;
+
+    setBusy(true);
     try {
-      setSession(await completeGoogleSignup({ token, businessName, province }));
+      setSession(
+        await completeGoogleSignup({
+          token,
+          businessName: businessName.value.trim(),
+          province,
+        }),
+      );
       router.push('/signup/plan');
     } catch (err) {
       if (err instanceof ApiError) {
-        if (err.fields) setErrors(err.fields);
-        else setProblem(err.message);
+        applyServerErrors({ businessName }, err.fields);
+        if (!err.fields) setProblem(err.message);
       } else {
         setProblem('We could not reach the server. Check your connection and try again.');
       }
@@ -87,21 +95,22 @@ function BusinessStep() {
         <Field
           label="Business name"
           required
-          error={errors.businessName}
+          error={businessName.error ?? undefined}
           hint="This is the name that appears on your invoices. You can change it later."
         >
           <TextInput
             id="businessName"
             autoComplete="organization"
             placeholder="For example, Maple Ridge Consulting"
-            value={businessName}
-            invalid={!!errors.businessName}
-            onChange={(e) => setBusinessName(e.target.value)}
+            value={businessName.value}
+            invalid={!!businessName.error}
+            onChange={(e) => businessName.set(e.target.value)}
+            onBlur={businessName.onBlur}
             autoFocus
           />
         </Field>
 
-        <Field label="Province or territory" required error={errors.province}>
+        <Field label="Province or territory" required>
           <Select id="province" value={province} onChange={(e) => setProvince(e.target.value)}>
             {PROVINCES.map((p) => (
               <option key={p.code} value={p.code}>

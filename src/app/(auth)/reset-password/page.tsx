@@ -12,37 +12,39 @@ import {
   SubmitButton,
 } from '@/components/form';
 import { ApiError, resetPassword } from '@/lib/api';
+import * as v from '@/lib/validation';
+import { applyServerErrors, useField, validateAll } from '@/lib/use-field';
 
 function ResetForm() {
   const router = useRouter();
   const token = useSearchParams().get('token') ?? '';
 
-  const [password, setPassword] = useState('');
-  const [confirm, setConfirm] = useState('');
+  const password = useField('', v.password);
   const [busy, setBusy] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
   const [problem, setProblem] = useState<string | null>(null);
+
+  /* The confirm rule closes over the current password, so it re-checks
+     correctly if the first box is edited after the second. */
+  const confirm = useField('', (value) =>
+    value === password.value ? null : 'The two passwords do not match.',
+  );
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setErrors({});
     setProblem(null);
 
-    /* Checked here as well as on the server, because the two boxes not matching
-       is a typo, not an attack, and a round trip to say so is wasted time. */
-    if (password !== confirm) {
-      setErrors({ confirm: 'The two passwords do not match.' });
-      return;
-    }
+    /* The two boxes not matching is a typo, not an attack, so it is caught here
+       rather than costing a round trip to say so. */
+    if (!validateAll([password, confirm])) return;
 
     setBusy(true);
     try {
-      await resetPassword(token, password);
+      await resetPassword(token, password.value);
       router.push('/password-changed');
     } catch (err) {
       if (err instanceof ApiError) {
-        if (err.fields) setErrors(err.fields);
-        else setProblem(err.message);
+        applyServerErrors({ password, confirm }, err.fields);
+        if (!err.fields) setProblem(err.message);
       } else {
         setProblem('We could not reach the server. Check your connection and try again.');
       }
@@ -96,27 +98,29 @@ function ResetForm() {
       )}
 
       <form className="rise d2" onSubmit={onSubmit} noValidate>
-        <Field label="New password" required error={errors.password}>
+        <Field label="New password" required error={password.error ?? undefined}>
           <PasswordInput
             id="password"
             autoComplete="new-password"
             placeholder="At least 10 characters"
-            value={password}
-            invalid={!!errors.password}
-            onChange={(e) => setPassword(e.target.value)}
+            value={password.value}
+            invalid={!!password.error}
+            onChange={(e) => password.set(e.target.value)}
+            onBlur={password.onBlur}
             autoFocus
           />
-          <PasswordMeter value={password} />
+          <PasswordMeter value={password.value} />
         </Field>
 
-        <Field label="Type it again" required error={errors.confirm}>
+        <Field label="Type it again" required error={confirm.error ?? undefined}>
           <PasswordInput
             id="confirm"
             autoComplete="new-password"
             placeholder="Repeat your new password"
-            value={confirm}
-            invalid={!!errors.confirm}
-            onChange={(e) => setConfirm(e.target.value)}
+            value={confirm.value}
+            invalid={!!confirm.error}
+            onChange={(e) => confirm.set(e.target.value)}
+            onBlur={confirm.onBlur}
           />
         </Field>
 

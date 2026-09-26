@@ -7,23 +7,27 @@ import { AuthShell } from '@/components/auth-shell';
 import { Field, Notice, SubmitButton, TextInput } from '@/components/form';
 import { Icon } from '@/components/icon';
 import { ApiError, forgotPassword } from '@/lib/api';
+import * as v from '@/lib/validation';
+import { useField, validateAll } from '@/lib/use-field';
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
+  const email = useField('', v.email);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
     setError(null);
+    if (!validateAll([email])) return;
+
+    setBusy(true);
     try {
-      await forgotPassword(email);
+      await forgotPassword(email.value.trim());
       /* The API answers the same way whether or not the address exists, and so
          does this screen. Carrying the address on to the next page is only so
          it can be shown back to them, never a confirmation that it is real. */
-      router.push(`/check-email?email=${encodeURIComponent(email)}`);
+      router.push(`/check-email?email=${encodeURIComponent(email.value.trim())}`);
     } catch (err) {
       setError(
         err instanceof ApiError
@@ -63,7 +67,7 @@ export default function ForgotPasswordPage() {
       )}
 
       <form className="rise d2" onSubmit={onSubmit} noValidate>
-        <Field label="Email address" required>
+        <Field label="Email address" required error={email.error ?? undefined}>
           <div className="control">
             <TextInput
               id="email"
@@ -71,8 +75,10 @@ export default function ForgotPasswordPage() {
               inputMode="email"
               autoComplete="username"
               placeholder="you@yourbusiness.ca"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={email.value}
+              invalid={!!email.error}
+              onChange={(e) => email.set(e.target.value)}
+              onBlur={email.onBlur}
               autoFocus
             />
           </div>
