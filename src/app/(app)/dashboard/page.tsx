@@ -62,6 +62,12 @@ function monthName(iso: string): string {
   return Number(year) === new Date().getFullYear() ? name : `${name} ${year}`;
 }
 
+/* "Six expenses", as the mockup writes it, up to twelve; a figure after that. */
+function countWord(n: number): string {
+  const words = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve'];
+  return words[n] ?? String(n);
+}
+
 export default function DashboardPage() {
   const { business, access } = useSession();
 
@@ -434,16 +440,27 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Receipts are Phase 8. A count of entries missing one would be every
-          entry, which is a true number that means nothing until there is a way
-          to attach anything. */}
-      <div style={{ marginBottom: 18 }}>
-        <Notice icon="receipt" title="Receipt chasing arrives with document storage">
-          When it does, this is where the entries with nothing attached will be listed, with
-          the input tax credit at risk on them. Today the figure would be every expense, which
-          is true and useless.
-        </Notice>
-      </div>
+      {/* Worked out by the API from the same query as the Receipts screen, for
+          this period, so the two can never count differently. Nothing is shown
+          when nothing is missing: a green notice saying so every day would be
+          noise the owner learns to skip. */}
+      {data && data.missingReceipts.count > 0 && (
+        <div className="notice notice-warn" style={{ marginBottom: 18 }}>
+          <Icon name="alert" size={22} />
+          <span>
+            <b>
+              {countWord(data.missingReceipts.count)}{' '}
+              {data.missingReceipts.count === 1 ? 'expense' : 'expenses'} in{' '}
+              {describe(period, range)} {data.missingReceipts.count === 1 ? 'has' : 'have'} no
+              receipt attached
+            </b>
+            {data.missingReceipts.atRiskCents > 0
+              ? `Between them they carry ${money(data.missingReceipts.atRiskCents, currency)} of input tax credit, and without a receipt the CRA can refuse it. `
+              : 'Without a receipt the CRA can refuse the expense. '}
+            <Link href="/receipts">Open receipts</Link> to add them.
+          </span>
+        </div>
+      )}
 
       {/* ----------------------------------------------------- recent --- */}
       <div className="panel">

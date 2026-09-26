@@ -3,8 +3,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Field, Notice, Select, TextInput } from '@/components/form';
 import { Icon } from '@/components/icon';
+import { FileDrop, RECEIPT_ACCEPT, RECEIPT_HINT, RECEIPT_MAX } from '@/components/receipts/file-drop';
 import {
   ApiError,
+  attachToEntry,
+  viewAttachment,
   createClient,
   listClients,
   createEntry,
@@ -19,7 +22,7 @@ import {
   type Vendor,
 } from '@/lib/api';
 import { splitTax } from '@/lib/tax';
-import { money } from '@/lib/format';
+import { fileSize, money } from '@/lib/format';
 import { today } from '@/lib/period';
 
 /* One drawer for money in and money out.
@@ -126,7 +129,7 @@ export function EntryDrawer({
   taxRateBp: number;
   currency: string;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (warning: string | null) => void;
   onClientAdded: (clients: Client[]) => void;
 }) {
   const editing = mode.entry;
@@ -137,8 +140,18 @@ export function EntryDrawer({
   const [problem, setProblem] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [newClient, setNewClient] = useState('');
+  const [file, setFile] = useState<File | null>(null);
 
   const firstField = useRef<HTMLInputElement>(null);
+
+  async function openFile(id: string) {
+    try {
+      const { url } = await viewAttachment(id);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      setProblem(err instanceof ApiError ? err.message : 'That file would not open.');
+    }
+  }
 
   /* Escape closes the drawer. One of the escape routes the accessibility rules
      ask for on anything modal, and the thing people reach for first. */
@@ -193,9 +206,24 @@ export function EntryDrawer({
     };
 
     try {
-      if (editing) await updateEntry(form.type, editing.id, input);
-      else await createEntry(form.type, input);
-      onSaved();
+      const saved = editing
+        ? await updateEntry(form.type, editing.id, input)
+        : await createEntry(form.type, input);
+
+      /* The entry is in the books whatever happens next. If the file does not
+         go, the person is told so plainly and the entry is not rolled back:
+         a missing receipt is fixable from the row, a lost entry is not. */
+      let warning: string | null = null;
+      if (file) {
+        try {
+          await attachToEntry(saved.entry.id, file);
+        } catch (err) {
+          warning = `The entry is saved, but the receipt did not upload. ${
+            err instanceof ApiError ? err.message : ''
+          } Attach it from the clip on the row.`;
+        }
+      }
+      onSaved(warning);
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.fields) setErrors(err.fields);
@@ -514,18 +542,45 @@ export function EntryDrawer({
             </Field>
           </div>
 
-          {/* Drawn because it is on the approved screen, and deliberately inert.
-              A receipt needs somewhere private to live, with signed links and
-              nothing public, and that is Phase 8. A control that accepted a
-              file and dropped it would be worse than one that says when it
-              arrives. */}
-          <Field label="Receipt or document">
-            <button className="drop" type="button" style={{ width: '100%' }} disabled>
-              <Icon name="upload" size={24} />
-              <b>Attaching receipts arrives with document storage</b>
-              Files need private storage and signed links, which is Phase 8
-            </button>
-          </Field>
+          {/* Attached at the moment of entry, which is the only reliable way
+              it still exists in six years. The file is held here and sent once
+              the entry is saved, because until then there is nothing for it to
+              belong to. */}
+          <div className="field">
+            <span className="label">Receipt or document</span>
+            {editing?.attachments.map((a) => (
+              <div className="attached" key={a.id} style={{ marginBottom: 10 }}>
+                <span className="thumb">
+                  <Icon name={a.contentType === 'application/pdf' ? 'file' : 'receipt'} size={20} />
+                </span>
+                <span>
+                  <span className="nm">{a.fileName}</span>
+                  <br />
+                  <span className="sz">
+                    {fileSize(a.sizeBytes)} · stays with this entry when it is corrected
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  className="rm"
+                  aria-label={`Open ${a.fileName}`}
+                  title="Open"
+                  onClick={() => void openFile(a.id)}
+                >
+                  <Icon name="eye" size={17} />
+                </button>
+              </div>
+            ))}
+            <FileDrop
+              accept={RECEIPT_ACCEPT}
+              maxBytes={RECEIPT_MAX}
+              title={editing?.attachments.length ? 'Attach another document' : 'Attach the receipt now'}
+              hint={RECEIPT_HINT}
+              file={file}
+              onFile={setFile}
+              disabled={busy}
+            />
+          </div>
 
         </form>
         </div>

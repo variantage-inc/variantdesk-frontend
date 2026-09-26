@@ -2,14 +2,17 @@
 
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { AppShell } from '@/components/app-shell';
 import { Notice } from '@/components/form';
 import { Icon } from '@/components/icon';
 import { ToastProvider, useToast } from '@/components/settings/toast';
 import { PaymentDrawer } from '@/components/invoices/payment-drawer';
+import { ReceiptDrawer } from '@/components/receipts/receipt-drawer';
+import { RECEIPT_ACCEPT } from '@/components/receipts/file-drop';
 import {
   ApiError,
+  attachToInvoice,
   getInvoice,
   removePayment,
   sendInvoice,
@@ -18,7 +21,7 @@ import {
   type InvoiceStatus,
 } from '@/lib/api';
 import { useSession } from '@/lib/session';
-import { formatDate, formatDateTime, money } from '@/lib/format';
+import { fileSize, formatDate, formatDateTime, money } from '@/lib/format';
 
 /* The invoice document.
 
@@ -64,6 +67,8 @@ function Inner() {
   const [paying, setPaying] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [viewing, setViewing] = useState<string | null>(null);
+  const picker = useRef<HTMLInputElement>(null);
 
   const canWrite = access?.canWrite === true;
 
@@ -144,8 +149,14 @@ function Inner() {
         <div className="doc">
           <div className="doc-head">
             <div className="brand">
+              {/* The logo this invoice was printed with, which a later change in
+                  Settings does not touch. Without one, the approved wordmark. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/brand/wordmark.svg" alt="Variantage" />
+              <img
+                className={invoice.logoUrl ? 'biz-logo' : undefined}
+                src={invoice.logoUrl ?? '/brand/wordmark.svg'}
+                alt={invoice.logoUrl ? invoice.seller.name : 'Variantage'}
+              />
               <address>
                 <b>{invoice.seller.name}</b>
                 {invoice.seller.address && (
@@ -423,6 +434,63 @@ function Inner() {
             )}
           </div>
 
+          {/* Documents that belong with this invoice: a signed purchase order,
+              a remittance, the client's own copy. Never printed. */}
+          <div className="railcard">
+            <h3>Documents</h3>
+            {(invoice.attachments ?? []).length === 0 ? (
+              <p className="hint" style={{ margin: '0 0 12px' }}>
+                Nothing attached. A signed purchase order or a remittance belongs here.
+              </p>
+            ) : (
+              <div className="paylist" style={{ margin: '0 0 12px' }}>
+                {(invoice.attachments ?? []).map((a) => (
+                  <div key={a.id} className="payrow">
+                    <span>
+                      <b style={{ wordBreak: 'break-word' }}>{a.fileName}</b>
+                      <br />
+                      <span className="muted" style={{ fontSize: 13 }}>
+                        {fileSize(a.sizeBytes)} · {formatDate(a.createdAt)}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      className="rm"
+                      aria-label={`Open ${a.fileName}`}
+                      title="Open"
+                      onClick={() => setViewing(a.id)}
+                    >
+                      <Icon name="eye" size={17} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {canWrite && (
+              <>
+                <button
+                  className="btn"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => picker.current?.click()}
+                >
+                  <Icon name="clip" size={19} /> Attach a document
+                </button>
+                <input
+                  ref={picker}
+                  type="file"
+                  accept={RECEIPT_ACCEPT}
+                  hidden
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = '';
+                    if (file) void act(() => attachToInvoice(id, file), `${file.name} attached to ${invoice.number}.`);
+                  }}
+                />
+              </>
+            )}
+          </div>
+
           {invoice.payments.length > 0 && (
             <Notice tone="ok" icon="check" title="Income has been posted for you">
               Each payment wrote one income entry, linked back to this invoice. It cannot be
@@ -438,6 +506,32 @@ function Inner() {
           </Notice>
         </aside>
       </div>
+
+      {viewing && (
+        <ReceiptDrawer
+          files={(invoice.attachments ?? []).filter((a) => a.id === viewing)}
+          on={{
+            kind: 'INVOICE',
+            id: invoice.id,
+            date: invoice.issueDate,
+            title: `Invoice ${invoice.number}`,
+            party: invoice.billTo.name,
+            category: null,
+            totalCents: invoice.totalCents,
+            taxCents: invoice.taxCents,
+            fromInvoice: null,
+          }}
+          currency={currency}
+          dateFormat="YYYY/MM/DD"
+          canWrite={canWrite}
+          onClose={() => setViewing(null)}
+          onDeleted={(message) => {
+            setViewing(null);
+            toast(message);
+            load();
+          }}
+        />
+      )}
 
       {paying && (
         <PaymentDrawer

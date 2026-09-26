@@ -347,6 +347,8 @@ export type BusinessSettings = {
   invoicePayTo: string | null;
   idleTimeoutMinutes: number;
   idleWarningSeconds: number;
+  /* What is on file. The picture itself is a short lived link from getLogoUrl. */
+  logo: { fileName: string; contentType: string; sizeBytes: number; uploadedAt: string | null } | null;
 };
 
 export type ProvinceRate = { code: string; name: string; label: string; note: string };
@@ -537,6 +539,8 @@ export type Entry = {
      and cannot be edited here: changing it would move the money without moving
      the invoice balance. */
   fromInvoice: { id: string; number: string } | null;
+  /* The receipts behind it. Empty means the clip in the row is dashed. */
+  attachments: Attachment[];
   createdAt: string;
 };
 
@@ -836,6 +840,10 @@ export type Invoice = {
   items: InvoiceItem[];
   payments: Payment[];
   createdAt: string;
+  /* Only on a single invoice: the logo it was printed with, as a five minute
+     link, and the documents attached to it. */
+  logoUrl?: string | null;
+  attachments?: Attachment[];
 };
 
 export type InvoiceList = {
@@ -1018,6 +1026,8 @@ export type Dashboard = {
     totalCents: number;
     fromInvoice: { id: string; number: string } | null;
   }[];
+  /* Expenses in the period with nothing attached, and the tax on them. */
+  missingReceipts: MissingSummary;
   /* Only present when the period has finished. */
   previous: {
     from: string;
@@ -1037,6 +1047,135 @@ export type Dashboard = {
 
 export const getDashboard = (from: string, to: string) =>
   api<Dashboard>(`/api/dashboard?from=${from}&to=${to}`);
+
+/* -------------------------------------------------------------- receipts --- */
+
+/* A receipt is never a loose file: it belongs to one entry or one invoice.
+   The storage key never reaches the browser. A file is looked at through a
+   five minute signed link, and saved through the API. */
+
+export type Attachment = {
+  id: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  createdAt: string;
+};
+
+export type ReceiptOn = {
+  kind: TxType | 'INVOICE';
+  id: string;
+  date: string;
+  title: string;
+  party: string | null;
+  category: string | null;
+  totalCents: number;
+  taxCents: number;
+  fromInvoice: { id: string; number: string } | null;
+};
+
+export type Receipt = Attachment & { by: string; on: ReceiptOn };
+
+export type MissingSummary = {
+  count: number;
+  atRiskCents: number;
+  firstDate: string | null;
+  lastDate: string | null;
+};
+
+export type MissingEntry = {
+  id: string;
+  date: string;
+  description: string;
+  vendor: string | null;
+  category: string | null;
+  subtotalCents: number;
+  taxCents: number;
+  totalCents: number;
+};
+
+export type ReceiptFilters = {
+  on?: 'all' | 'EXPENSE' | 'INCOME' | 'DRAWING' | 'INVOICE';
+  fileType?: 'all' | 'pdf' | 'img';
+  search?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+};
+
+export type ReceiptList = {
+  receipts: Receipt[];
+  total: number;
+  page: number;
+  perPage: number;
+  counts: Record<'all' | TxType | 'INVOICE', number>;
+  summary: { files: number; pdfs: number; images: number; bytes: number };
+  missing: MissingSummary & { subtotalCents: number; entries: MissingEntry[] };
+  configured: boolean;
+  maxBytes: number;
+  currency: string;
+  dateFormat: DateFormat;
+  gstRegistered: boolean;
+};
+
+export const listReceipts = (filters: ReceiptFilters = {}) =>
+  api<ReceiptList>(`/api/receipts${qs(filters as EntryFilters)}`);
+
+/* A file goes up as its own bytes, not a form, with its name in a header. The
+   API reads the bytes to decide what it is, so the type sent here is only a
+   label for the transport. */
+async function sendFile<T>(path: string, file: File, method: 'POST' | 'PUT'): Promise<T> {
+  const send = () =>
+    fetch(`${BASE_URL}${path}`, {
+      method,
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'X-File-Name': encodeURIComponent(file.name),
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
+      body: file,
+    });
+
+  let res = await send();
+  if (res.status === 401 && (await refresh().catch(() => null))) res = await send();
+
+  const text = await res.text();
+  const body = (text ? JSON.parse(text) : null) as (T & Body) | null;
+  if (!res.ok || !body) {
+    const e = body?.error;
+    throw new ApiError(
+      res.status,
+      e?.code ?? 'upload_failed',
+      e?.message ?? 'That file did not upload. Try again.',
+    );
+  }
+  return body;
+}
+
+export const attachToEntry = (entryId: string, file: File) =>
+  sendFile<{ receipt: Attachment }>(`/api/entries/${entryId}/attachments`, file, 'POST');
+
+export const attachToInvoice = (invoiceId: string, file: File) =>
+  sendFile<{ receipt: Attachment }>(`/api/invoices/${invoiceId}/attachments`, file, 'POST');
+
+export const viewAttachment = (id: string) =>
+  api<{ url: string; expiresInSeconds: number; contentType: string }>(
+    `/api/attachments/${id}/view`,
+  );
+
+export const deleteAttachment = (id: string) => del<{ ok: true }>(`/api/attachments/${id}`);
+
+/* Saved through the API with the access token, like a report export. A link
+   to the storage origin cannot be told to save rather than show. */
+export async function downloadAttachment(id: string): Promise<string> {
+  return fetchAndSave(`/api/attachments/${id}/download`, 'receipt');
+}
+
+export const uploadLogo = (file: File) =>
+  sendFile<SettingsPayload>('/api/settings/logo', file, 'PUT');
+export const removeLogo = () => del<SettingsPayload>('/api/settings/logo');
+export const getLogoUrl = () => api<{ url: string | null }>('/api/settings/logo');
 
 /* --------------------------------------------------------------- reports --- */
 
@@ -1157,8 +1296,14 @@ export async function downloadReport(
   to: string,
   compare: boolean,
 ): Promise<string> {
-  const path = `/api/reports/${id}/${format}?from=${from}&to=${to}&compare=${compare ? 1 : 0}`;
+  return fetchAndSave(
+    `/api/reports/${id}/${format}?from=${from}&to=${to}&compare=${compare ? 1 : 0}`,
+    `report.${format}`,
+  );
+}
 
+/* Fetch a file with the access token and hand it to the browser to save. */
+async function fetchAndSave(path: string, fallbackName: string): Promise<string> {
   const fetchIt = () =>
     fetch(`${BASE_URL}${path}`, {
       credentials: 'include',
@@ -1170,11 +1315,15 @@ export async function downloadReport(
   if (res.status === 401 && (await refresh().catch(() => null))) res = await fetchIt();
 
   if (!res.ok) {
-    throw new ApiError(res.status, 'export_failed', 'We could not build that file. Try again.');
+    throw new ApiError(res.status, 'download_failed', 'We could not fetch that file. Try again.');
   }
 
+  /* The UTF-8 form first, so a name with an accent survives. */
   const disposition = res.headers.get('Content-Disposition') ?? '';
-  const name = /filename="([^"]+)"/.exec(disposition)?.[1] ?? `report.${format}`;
+  const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
+  const name = utf8
+    ? decodeURIComponent(utf8)
+    : (/filename="([^"]+)"/.exec(disposition)?.[1] ?? fallbackName);
 
   const url = URL.createObjectURL(await res.blob());
   const link = document.createElement('a');

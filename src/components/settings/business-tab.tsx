@@ -1,9 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Field, Notice, Select, TextInput } from '@/components/form';
 import { Icon } from '@/components/icon';
-import { ApiError, saveBusiness, type SettingsPayload } from '@/lib/api';
+import { FileDrop } from '@/components/receipts/file-drop';
+import {
+  ApiError,
+  getLogoUrl,
+  removeLogo,
+  saveBusiness,
+  uploadLogo,
+  type SettingsPayload,
+} from '@/lib/api';
+import { useSession } from '@/lib/session';
+import { fileKind, fileSize, formatDate } from '@/lib/format';
 import { findProvince } from '@/lib/tax';
 import { useDraft } from './use-draft';
 import { useSaveBar } from './save-bar';
@@ -36,6 +46,150 @@ type Form = {
   website: string;
   businessNumber: string;
 };
+
+const LOGO_MAX = 2 * 1024 * 1024;
+const LOGO_MIN_WIDTH = 400;
+
+/* The pixel width of a PNG or JPG, read in the browser. An SVG has no pixels
+   to count, so it passes. Advice rather than a rule: a narrow logo prints
+   soft, it does not break anything. */
+function widthOf(file: File): Promise<number | null> {
+  if (file.name.toLowerCase().endsWith('.svg')) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      resolve(img.naturalWidth);
+      URL.revokeObjectURL(url);
+    };
+    img.onerror = () => {
+      resolve(null);
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  });
+}
+
+/* The logo is saved the moment it is chosen, on its own, rather than waiting
+   for the save bar. It is a file, not a field: there is nothing to undo into,
+   and holding a chosen file in a half saved form is how it gets lost. */
+function LogoField({
+  data,
+  onSaved,
+}: {
+  data: SettingsPayload;
+  onSaved: (payload: SettingsPayload) => void;
+}) {
+  const { user, access } = useSession();
+  const toast = useToast();
+  const logo = data.business.logo;
+  const canEdit = user?.role === 'OWNER' && access?.canWrite === true;
+
+  const [url, setUrl] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const stamp = logo?.uploadedAt ?? null;
+  useEffect(() => {
+    if (!stamp) return;
+    let live = true;
+    getLogoUrl()
+      .then((r) => live && setUrl(r.url))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [stamp]);
+
+  async function choose(file: File | null) {
+    if (!file) return;
+    setProblem(null);
+    const width = await widthOf(file);
+    if (width !== null && width < LOGO_MIN_WIDTH) {
+      setProblem(
+        `That logo is ${width}px wide. Use one at least ${LOGO_MIN_WIDTH}px wide so it prints sharply.`,
+      );
+      return;
+    }
+    setBusy(true);
+    try {
+      onSaved(await uploadLogo(file));
+      toast('Your logo has been saved. New invoices will carry it.');
+    } catch (err) {
+      setProblem(err instanceof ApiError ? err.message : 'That logo did not upload. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    setBusy(true);
+    try {
+      onSaved(await removeLogo());
+      setUrl(null);
+      toast('Logo removed. Invoices already issued keep the one they were printed with.');
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'That did not work.', 'err');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      {logo ? (
+        <div className="attached">
+          <span className="thumb" style={{ background: '#fff', border: '1px solid var(--line)', overflow: 'hidden' }}>
+            {url ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img src={url} alt="Your logo" style={{ maxWidth: 38, maxHeight: 38 }} />
+            ) : (
+              <Icon name="file" size={20} />
+            )}
+          </span>
+          <span>
+            <span className="nm">{logo.fileName}</span>
+            <br />
+            <span className="sz">
+              {fileKind(logo.contentType)} · {fileSize(logo.sizeBytes)}
+              {logo.uploadedAt ? ` · uploaded ${formatDate(logo.uploadedAt, data.business.dateFormat)}` : ''}
+            </span>
+          </span>
+          {canEdit && (
+            <button
+              type="button"
+              className="rm"
+              aria-label="Remove the logo"
+              disabled={busy}
+              onClick={() => void remove()}
+            >
+              <Icon name="trash" size={17} />
+            </button>
+          )}
+        </div>
+      ) : canEdit ? (
+        <FileDrop
+          accept=".png,.jpg,.jpeg,.svg"
+          maxBytes={LOGO_MAX}
+          title={busy ? 'Uploading…' : 'Choose a logo, or drag one here'}
+          hint="PNG, JPG or SVG · up to 2 MB · at least 400px wide"
+          file={null}
+          onFile={(f) => void choose(f)}
+          disabled={busy}
+          thumb="file"
+        />
+      ) : (
+        <p className="hint">No logo yet. The account owner can add one.</p>
+      )}
+      {problem && (
+        <p className="err-msg" role="alert" style={{ marginTop: 8 }}>
+          <Icon name="alert" size={15} />
+          <span>{problem}</span>
+        </p>
+      )}
+    </>
+  );
+}
 
 export function BusinessTab({
   data,
@@ -241,17 +395,7 @@ export function BusinessTab({
                 background, or an SVG, gives the sharpest result.
               </p>
 
-              {/* Drawn, and deliberately not working yet.
-
-                  Uploading a file needs somewhere private to put it, and that is
-                  Phase 8: private buckets, signed URLs, nothing public. A button
-                  that accepted a logo and quietly dropped it would be worse than
-                  one that says when it arrives. */}
-              <button className="drop" type="button" style={{ width: '100%' }} disabled>
-                <Icon name="upload" size={26} />
-                <b>Logo upload arrives with receipt storage</b>
-                Files need private storage and signed links, which is Phase 8
-              </button>
+              <LogoField data={data} onSaved={onSaved} />
             </div>
           </div>
         </div>

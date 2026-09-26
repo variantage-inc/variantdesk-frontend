@@ -45,3 +45,13 @@
   background: rgba(46, 90, 172, .07);
   box-shadow: inset 0 0 0 3px var(--accent-600);
 }
+
+/* A business's own logo on its invoice. The wordmark is a fixed width because
+   its shape is known; a customer's logo can be any shape, so it is bounded on
+   both sides instead of stretched to 205px wide. */
+.doc-head .brand img.biz-logo {
+  width: auto;
+  max-width: 205px;
+  max-height: 90px;
+  object-fit: contain;
+}

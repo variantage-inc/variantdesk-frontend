@@ -1,16 +1,19 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '@/components/app-shell';
 import { Notice } from '@/components/form';
 import { Icon } from '@/components/icon';
 import { ToastProvider, useToast } from '@/components/settings/toast';
+import { ReceiptDrawer } from '@/components/receipts/receipt-drawer';
+import { RECEIPT_ACCEPT, RECEIPT_MAX } from '@/components/receipts/file-drop';
 import { EntryDrawer, type DrawerMode } from './entry-drawer';
 import { HistoryModal } from './history-modal';
 import { ChangesDrawer } from './changes-drawer';
 import {
   ApiError,
+  attachToEntry,
   deleteEntry,
   listCategories,
   listClients,
@@ -21,10 +24,11 @@ import {
   type Client,
   type Entry,
   type EntryList,
+  type ReceiptOn,
   type Vendor,
 } from '@/lib/api';
 import { useSession } from '@/lib/session';
-import { formatDate, money } from '@/lib/format';
+import { fileSize, formatDate, money } from '@/lib/format';
 import { describe, rangeFor, type PeriodKind, type Range } from '@/lib/period';
 
 /* Income, and expenses with drawings, are the same screen with different
@@ -37,6 +41,19 @@ import { describe, rangeFor, type PeriodKind, type Range } from '@/lib/period';
    on. The footer sums the whole filtered period, not the page on screen: a
    footer that added up one page of three would be a wrong number, which is
    worse than no number. */
+
+/* An entry, described the way the receipt drawer describes what a file is on. */
+export const receiptContext = (e: Entry): ReceiptOn => ({
+  kind: e.type,
+  id: e.id,
+  date: e.date,
+  title: e.description,
+  party: e.type === 'DRAWING' ? e.purpose : (e.vendor?.name ?? e.client?.name ?? null),
+  category: e.category?.name ?? null,
+  totalCents: e.totalCents,
+  taxCents: e.taxCents,
+  fromInvoice: e.fromInvoice,
+});
 
 const METHOD_LABEL: Record<string, string> = {
   BANK_TRANSFER: 'Bank transfer',
@@ -79,6 +96,12 @@ function Inner({ side }: { side: 'INCOME' | 'MONEY_OUT' }) {
   const [changes, setChanges] = useState(false);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<Entry | null>(null);
+
+  /* The dashed clip on a row opens the file chooser for that entry. The entry
+     is held in a ref, because the chooser answers after this render. */
+  const picker = useRef<HTMLInputElement>(null);
+  const pickFor = useRef<Entry | null>(null);
 
   const canWrite = access?.canWrite === true;
 
@@ -130,6 +153,24 @@ function Inner({ side }: { side: 'INCOME' | 'MONEY_OUT' }) {
     setPaymentMethod('');
     setShow('all');
     setPage(1);
+  }
+
+  async function attach(entry: Entry, file: File) {
+    if (file.size > RECEIPT_MAX) {
+      toast(`That file is ${fileSize(file.size)}. The limit is 10 MB.`, 'err');
+      return;
+    }
+    try {
+      await attachToEntry(entry.id, file);
+      toast(
+        entry.type === 'EXPENSE' && entry.taxCents > 0
+          ? `Attached to "${entry.description}". That is ${money(entry.taxCents, currency)} of tax you can now prove.`
+          : `Attached to "${entry.description}".`,
+      );
+      void load();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'That file did not upload.', 'err');
+    }
   }
 
   async function remove(entry: Entry) {
@@ -438,6 +479,7 @@ function Inner({ side }: { side: 'INCOME' | 'MONEY_OUT' }) {
                 <th>{income ? 'Client' : 'Paid to'}</th>
                 <th>Category</th>
                 <th>Method</th>
+                <th style={{ textAlign: 'center' }}>Receipt</th>
                 <th className="r">Before tax</th>
                 <th className="r">{taxLabel}</th>
                 <th className="r">Total</th>
@@ -487,6 +529,38 @@ function Inner({ side }: { side: 'INCOME' | 'MONEY_OUT' }) {
                   <td>{e.category ? <span className="tag">{e.category.name}</span> : null}</td>
                   <td className="muted">
                     {e.paymentMethod ? METHOD_LABEL[e.paymentMethod] : '—'}
+                  </td>
+                  {/* A solid clip opens the receipt. A dashed one means nothing
+                      is attached, so the gap is visible now rather than at year
+                      end, and pressing it attaches one straight to this entry. */}
+                  <td style={{ textAlign: 'center' }}>
+                    {e.attachments.length > 0 ? (
+                      <button
+                        type="button"
+                        className="rcpt"
+                        style={{ margin: '0 auto', cursor: 'pointer' }}
+                        aria-label={`View the receipt for ${e.description}`}
+                        title={e.attachments.length > 1 ? `${e.attachments.length} documents` : 'View receipt'}
+                        onClick={() => setViewing(e)}
+                      >
+                        <Icon name="clip" size={17} />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="rcpt none"
+                        style={{ margin: '0 auto', cursor: canWrite ? 'pointer' : 'default' }}
+                        aria-label={canWrite ? `Attach a receipt to ${e.description}` : 'No receipt'}
+                        title={canWrite ? 'Attach a receipt' : 'No receipt'}
+                        disabled={!canWrite}
+                        onClick={() => {
+                          pickFor.current = e;
+                          picker.current?.click();
+                        }}
+                      >
+                        <Icon name="clip" size={17} />
+                      </button>
+                    )}
                   </td>
                   <td className="r">{money(e.subtotalCents, currency)}</td>
                   <td className="r muted">
@@ -552,7 +626,7 @@ function Inner({ side }: { side: 'INCOME' | 'MONEY_OUT' }) {
 
               {data && data.entries.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="muted" style={{ padding: '34px 16px' }}>
+                  <td colSpan={10} className="muted" style={{ padding: '34px 16px' }}>
                     {search || categoryId || partyId || paymentMethod
                       ? 'Nothing matches those filters. Try clearing them.'
                       : `No ${income ? 'income' : 'entries'} in ${describe(period, range)} yet.`}
@@ -562,7 +636,7 @@ function Inner({ side }: { side: 'INCOME' | 'MONEY_OUT' }) {
 
               {!data && (
                 <tr>
-                  <td colSpan={9} className="muted" style={{ padding: '34px 16px' }}>
+                  <td colSpan={10} className="muted" style={{ padding: '34px 16px' }}>
                     Loading…
                   </td>
                 </tr>
@@ -572,7 +646,7 @@ function Inner({ side }: { side: 'INCOME' | 'MONEY_OUT' }) {
             {data && data.entries.length > 0 && (
               <tfoot>
                 <tr>
-                  <td colSpan={5}>
+                  <td colSpan={6}>
                     {data.total} {data.total === 1 ? 'entry' : 'entries'} ·{' '}
                     {describe(period, range)}
                   </td>
@@ -639,10 +713,39 @@ function Inner({ side }: { side: 'INCOME' | 'MONEY_OUT' }) {
         <Notice icon="shield" title="Nothing here is ever really deleted">
           Editing an entry keeps the old version and writes a correction; removing one writes a
           reversal. The clock on any row shows every version it has had and who changed it, and{' '}
-          <b>What changed</b> above lists every correction and removal in this period. Receipts
-          arrive with document storage, and attaching one to an entry will be possible then.
+          <b>What changed</b> above lists every correction and removal in this period. A
+          receipt stays with its entry through every correction.
         </Notice>
       </div>
+
+      <input
+        ref={picker}
+        type="file"
+        accept={RECEIPT_ACCEPT}
+        hidden
+        onChange={(ev) => {
+          const file = ev.target.files?.[0];
+          const entry = pickFor.current;
+          ev.target.value = '';
+          if (file && entry) void attach(entry, file);
+        }}
+      />
+
+      {viewing && (
+        <ReceiptDrawer
+          files={viewing.attachments}
+          on={receiptContext(viewing)}
+          currency={currency}
+          dateFormat={fmt}
+          canWrite={canWrite}
+          onClose={() => setViewing(null)}
+          onDeleted={(message) => {
+            setViewing(null);
+            toast(message);
+            void load();
+          }}
+        />
+      )}
 
       {history && <HistoryModal entryId={history} onClose={() => setHistory(null)} />}
 
@@ -668,9 +771,10 @@ function Inner({ side }: { side: 'INCOME' | 'MONEY_OUT' }) {
           currency={currency}
           onClose={() => setDrawer(null)}
           onClientAdded={setClients}
-          onSaved={() => {
+          onSaved={(warning) => {
             setDrawer(null);
-            toast(drawer.entry ? 'The correction has been saved.' : 'Saved.');
+            if (warning) toast(warning, 'err');
+            else toast(drawer.entry ? 'The correction has been saved.' : 'Saved.');
             void load();
           }}
         />

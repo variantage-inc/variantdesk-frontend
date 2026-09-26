@@ -24,7 +24,13 @@ export type DateFormat = 'YYYY/MM/DD' | 'DD/MM/YYYY' | 'MM/DD/YYYY';
 
 export function formatDate(value: string | Date | null, fmt: DateFormat = 'YYYY/MM/DD'): string {
   if (!value) return '';
-  const d = typeof value === 'string' ? new Date(value) : value;
+  /* A bare date is a calendar day, not an instant. Read as UTC midnight it
+     becomes the previous evening anywhere west of Greenwich, which is all of
+     Canada, so it is read as local midnight instead. Timestamps still convert. */
+  const d =
+    typeof value === 'string'
+      ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value)
+      : value;
   if (Number.isNaN(d.getTime())) return '';
 
   const yyyy = String(d.getFullYear());
@@ -87,6 +93,23 @@ export function describeDevice(ua: string | null): string {
 
   return `${browser} on ${platform}`;
 }
+
+export const fileSize = (bytes: number): string =>
+  bytes >= 1024 * 1024
+    ? `${(bytes / 1024 / 1024).toFixed(1)} MB`
+    : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+
+/* What kind of file, in words, from the type the API proved from its bytes. */
+export const fileKind = (contentType: string): string =>
+  contentType === 'application/pdf'
+    ? 'PDF'
+    : contentType === 'image/svg+xml'
+      ? 'Vector'
+      : contentType === 'image/jpeg' || contentType === 'image/heic'
+        ? 'Photo'
+        : contentType.startsWith('image/')
+          ? 'Image'
+          : 'File';
 
 export const initials = (first: string, last: string): string =>
   `${first.charAt(0)}${last.charAt(0)}`.toUpperCase();
