@@ -55,3 +55,18 @@
   max-height: 90px;
   object-fit: contain;
 }
+
+/* The public invoice page: the document on its own, centred, with the payment
+   bar above it. No app shell, because the person here has no account. */
+.paypage { min-height: 100vh; background: var(--surface-2); padding: 40px 20px 60px; }
+.paypage .paywrap { max-width: 880px; margin: 0 auto; }
+.paypage .paybar {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  background: #fff; border: 1px solid var(--line); border-radius: var(--r);
+  padding: 18px 22px; margin-bottom: 18px;
+}
+.paypage .paybar .due { font-size: var(--fs-label); color: var(--ink-3); }
+.paypage .paybar .due b { display: block; font-size: 26px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.paypage .paybar .btn { margin-left: auto; }
+.paypage .payfoot { text-align: center; color: var(--ink-3); font-size: 13px; margin-top: 18px; }
+@media print { .paypage { padding: 0; background: #fff; } .paypage .paybar, .paypage .payfoot { display: none; } }

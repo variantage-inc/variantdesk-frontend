@@ -16,9 +16,9 @@ export function proxy() {
   res.headers.set('X-Content-Type-Options', 'nosniff');
   res.headers.set('X-Frame-Options', 'DENY');
   res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-  /* Nothing here needs a camera, a microphone or a location. Voice entry, when
-     it arrives, will need the microphone and this list will say so. */
-  res.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  /* Voice entry records from the microphone, on this site and nowhere else.
+     Nothing needs a camera or a location. */
+  res.headers.set('Permissions-Policy', 'camera=(), microphone=(self), geolocation=()');
 
   return res;
 }

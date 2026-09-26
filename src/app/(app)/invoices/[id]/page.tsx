@@ -8,17 +8,20 @@ import { Notice } from '@/components/form';
 import { Icon } from '@/components/icon';
 import { ToastProvider, useToast } from '@/components/settings/toast';
 import { PaymentDrawer } from '@/components/invoices/payment-drawer';
+import { InvoiceDocument } from '@/components/invoices/invoice-document';
 import { ReceiptDrawer } from '@/components/receipts/receipt-drawer';
 import { RECEIPT_ACCEPT } from '@/components/receipts/file-drop';
 import {
   ApiError,
   attachToInvoice,
+  cardPaymentsStatus,
   getInvoice,
+  invoiceLink,
+  type CardPaymentsStatus,
   removePayment,
   sendInvoice,
   voidInvoice,
   type Invoice,
-  type InvoiceStatus,
 } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { fileSize, formatDate, formatDateTime, money } from '@/lib/format';
@@ -36,14 +39,6 @@ import { fileSize, formatDate, formatDateTime, money } from '@/lib/format';
    re-derived from today's settings, so a business that has since moved
    premises does not silently reprint last year's invoices with the new
    address. */
-
-const STATUS: Record<InvoiceStatus, { label: string; cls: string }> = {
-  draft: { label: 'Draft', cls: 'p-draft' },
-  sent: { label: 'Sent', cls: 'p-sent' },
-  part: { label: 'Partially paid', cls: 'p-part' },
-  overdue: { label: 'Overdue', cls: 'p-late' },
-  paid: { label: 'Paid', cls: 'p-paid' },
-};
 
 const METHOD: Record<string, string> = {
   BANK_TRANSFER: 'Bank transfer',
@@ -68,6 +63,13 @@ function Inner() {
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [viewing, setViewing] = useState<string | null>(null);
+  const [cards, setCards] = useState<CardPaymentsStatus | null>(null);
+
+  useEffect(() => {
+    cardPaymentsStatus()
+      .then(setCards)
+      .catch(() => undefined);
+  }, []);
   const picker = useRef<HTMLInputElement>(null);
 
   const canWrite = access?.canWrite === true;
@@ -126,7 +128,6 @@ function Inner() {
   }
 
   const currency = 'CAD';
-  const status = STATUS[invoice.status];
 
   return (
     <AppShell crumb={invoice.number}>
@@ -146,179 +147,7 @@ function Inner() {
 
       <div className="doc-grid">
         {/* ------------------------------------------- the document itself --- */}
-        <div className="doc">
-          <div className="doc-head">
-            <div className="brand">
-              {/* The logo this invoice was printed with, which a later change in
-                  Settings does not touch. Without one, the approved wordmark. */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                className={invoice.logoUrl ? 'biz-logo' : undefined}
-                src={invoice.logoUrl ?? '/brand/wordmark.svg'}
-                alt={invoice.logoUrl ? invoice.seller.name : 'Variantage'}
-              />
-              <address>
-                <b>{invoice.seller.name}</b>
-                {invoice.seller.address && (
-                  <>
-                    <br />
-                    {invoice.seller.address.split('\n').map((line) => (
-                      <span key={line}>
-                        {line}
-                        <br />
-                      </span>
-                    ))}
-                  </>
-                )}
-                {invoice.seller.email && (
-                  <>
-                    {invoice.seller.email}
-                    <br />
-                  </>
-                )}
-                {invoice.seller.phone}
-              </address>
-            </div>
-            <div className="meta">
-              <h1>Invoice</h1>
-              <div className="no">{invoice.number}</div>
-              <span className={`pill ${status.cls}`}>{status.label}</span>
-            </div>
-          </div>
-
-          <div className="doc-parties">
-            <div>
-              <h3>Billed to</h3>
-              <address>
-                <b>{invoice.billTo.name}</b>
-                {invoice.billTo.contact && (
-                  <>
-                    <br />
-                    {invoice.billTo.contact}
-                  </>
-                )}
-                {invoice.billTo.address && (
-                  <>
-                    <br />
-                    {invoice.billTo.address.split('\n').map((line) => (
-                      <span key={line}>
-                        {line}
-                        <br />
-                      </span>
-                    ))}
-                  </>
-                )}
-              </address>
-            </div>
-            <div className="doc-dates">
-              <div>
-                <b>Invoice date</b>
-                <span>{formatDate(invoice.issueDate)}</span>
-              </div>
-              <div>
-                <b>Payment due</b>
-                <span>{formatDate(invoice.dueDate)}</span>
-              </div>
-              <div>
-                <b>Terms</b>
-                <span>
-                  {invoice.paymentTermsDays === 0
-                    ? 'Due on receipt'
-                    : `Net ${invoice.paymentTermsDays}`}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <table className="doc-lines">
-            <thead>
-              <tr>
-                <th>Description</th>
-                <th className="r" style={{ width: 80 }}>
-                  Qty
-                </th>
-                <th className="r" style={{ width: 120 }}>
-                  Rate
-                </th>
-                <th className="r" style={{ width: 130 }}>
-                  Amount
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {invoice.items.map((i) => (
-                <tr key={i.id}>
-                  <td>{i.description}</td>
-                  <td className="r">{i.quantity}</td>
-                  <td className="r">{money(i.unitPriceCents, currency)}</td>
-                  <td className="r">{money(i.lineTotalCents, currency)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          <div className="doc-sum">
-            <div className="box">
-              <div className="row">
-                <span>Subtotal</span>
-                <span>{money(invoice.subtotalCents, currency)}</span>
-              </div>
-              {invoice.discountCents > 0 && (
-                <div className="row">
-                  <span>
-                    Discount
-                    {invoice.discountMode === 'PERCENT' && ` (${invoice.discountValue / 100}%)`}
-                  </span>
-                  <span>-{money(invoice.discountCents, currency)}</span>
-                </div>
-              )}
-              <div className="row">
-                <span>{invoice.chargeTax ? invoice.taxLabel : 'No tax charged'}</span>
-                <span>{money(invoice.taxCents, currency)}</span>
-              </div>
-              <div className="row tot">
-                <span>Total</span>
-                <span>{money(invoice.totalCents, currency)}</span>
-              </div>
-              {invoice.paidCents > 0 && (
-                <>
-                  <div className="row">
-                    <span>Received</span>
-                    <span>{money(invoice.paidCents, currency)}</span>
-                  </div>
-                  <div className="row tot">
-                    <span>Still owed</span>
-                    <span>{money(invoice.balanceCents, currency)}</span>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-
-          {invoice.notes && (
-            <p style={{ margin: '0 0 20px', fontSize: 'var(--fs-label)' }}>{invoice.notes}</p>
-          )}
-
-          <div className="doc-foot">
-            <div>
-              <h4>Payment terms</h4>
-              <span>{invoice.terms ?? `Payment due within ${invoice.paymentTermsDays} days.`}</span>
-            </div>
-            {invoice.seller.gstHstNumber && (
-              <div>
-                <h4>GST / HST registration number</h4>
-                <span className="doc-bn">{invoice.seller.gstHstNumber}</span>
-              </div>
-            )}
-            {invoice.payTo && (
-              <div>
-                <h4>How to pay</h4>
-                <span>{invoice.payTo}</span>
-              </div>
-            )}
-            {invoice.footer && <div style={{ color: 'var(--ink-3)' }}>{invoice.footer}</div>}
-          </div>
-        </div>
+        <InvoiceDocument doc={invoice} currency={currency} />
 
         {/* ------------------------------------------------------- the rail --- */}
         <aside className="noprint">
@@ -388,6 +217,83 @@ function Inner() {
             )}
           </div>
 
+          {/* The link the client opens to see and pay the invoice. There
+              is no invoice email, so this is how it reaches them. */}
+          {invoice.status !== 'draft' && (
+            <div className="railcard">
+              <h3>Share with your client</h3>
+              {invoice.publicUrl ? (
+                <>
+                  <input
+                    className="input"
+                    readOnly
+                    value={invoice.publicUrl}
+                    aria-label="Link to this invoice"
+                    onFocus={(e) => e.target.select()}
+                    style={{ fontSize: 13, height: 44, marginBottom: 10 }}
+                  />
+                  <button
+                    className="btn"
+                    type="button"
+                    onClick={() =>
+                      void navigator.clipboard
+                        .writeText(invoice.publicUrl!)
+                        .then(() => toast('Link copied. Paste it into your message to the client.'))
+                    }
+                  >
+                    <Icon name="send" size={19} /> Copy the link
+                  </button>
+                  {canWrite && (
+                    <button
+                      className="btn btn-quiet"
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        void act(
+                          () => invoiceLink(id, true),
+                          'A new link is ready. The old one no longer opens this invoice.',
+                        )
+                      }
+                    >
+                      Replace the link
+                    </button>
+                  )}
+                </>
+              ) : canWrite ? (
+                <button
+                  className="btn"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void act(() => invoiceLink(id), 'Link ready. Copy it and send it to your client.')}
+                >
+                  <Icon name="send" size={19} /> Make a link to send
+                </button>
+              ) : (
+                <p className="hint" style={{ margin: 0 }}>No link has been made yet.</p>
+              )}
+              <p className="hint" style={{ margin: '12px 0 0' }}>
+                {cards?.chargesEnabled
+                  ? 'Your client sees this invoice and can pay it by card. The payment is recorded here by itself.'
+                  : 'Your client sees this invoice. To let them pay it by card, connect Stripe on the Invoice template tab in Settings.'}
+              </p>
+            </div>
+          )}
+
+          {invoice.cardFailure && invoice.balanceCents > 0 && (
+            <Notice tone="warn" icon="card" title="A card payment was declined">
+              {invoice.billTo.name} tried to pay by card on {formatDateTime(invoice.cardFailure.at)}.
+              Stripe said: {invoice.cardFailure.message ?? 'the card was declined'}. Nothing was
+              recorded; the invoice is still open.
+            </Notice>
+          )}
+
+          {invoice.balanceCents < 0 && (
+            <Notice tone="warn" icon="alert" title="This invoice has been overpaid">
+              {money(-invoice.balanceCents, currency)} more arrived than was owed, usually a card
+              payment landing after one was recorded by hand. Refund the difference to the client.
+            </Notice>
+          )}
+
           <div className="railcard">
             <h3>Payments</h3>
             {invoice.payments.length === 0 ? (
@@ -403,15 +309,21 @@ function Inner() {
                       <br />
                       <span className="muted" style={{ fontSize: 13 }}>
                         {formatDate(p.date)}
-                        {p.method && ` · ${METHOD[p.method]}`}
-                        {p.reference && ` · ${p.reference}`}
+                        {p.card
+                          ? ' · Card, paid online'
+                          : `${p.method ? ` · ${METHOD[p.method]}` : ''}${p.reference ? ` · ${p.reference}` : ''}`}
                       </span>
                       <br />
                       <span className="muted" style={{ fontSize: 12 }}>
-                        {p.by} · {formatDateTime(p.at)}
+                        {p.card
+                          ? `Stripe ${p.card.reference}${p.card.feeCents !== null ? ` · fee ${money(p.card.feeCents, currency)}` : ''}`
+                          : `${p.by} · ${formatDateTime(p.at)}`}
                       </span>
                     </span>
-                    {canWrite && (
+                    {/* A card payment is undone by refunding it in Stripe,
+                        which reverses it here. Removing it here would leave
+                        the money in the bank and off the books. */}
+                    {canWrite && !p.card && (
                       <button
                         type="button"
                         className="rm"

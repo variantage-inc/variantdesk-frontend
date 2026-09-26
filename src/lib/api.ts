@@ -800,6 +800,8 @@ export type Payment = {
   by: string;
   at: string;
   transactionId: string;
+  /* Paid online by card: Stripe's reference and the fee it took. */
+  card: { reference: string; feeCents: number | null } | null;
 };
 
 export type Invoice = {
@@ -844,6 +846,10 @@ export type Invoice = {
      link, and the documents attached to it. */
   logoUrl?: string | null;
   attachments?: Attachment[];
+  /* The link the client pays through, once one has been made. */
+  publicUrl?: string | null;
+  /* The last card payment the client tried and Stripe declined. */
+  cardFailure: { at: string; message: string | null } | null;
 };
 
 export type InvoiceList = {
@@ -956,6 +962,73 @@ export const removePayment = (id: string, paymentId: string) =>
     method: 'DELETE',
     headers: idempotent(),
   });
+
+/* ---------------------------------------------------------- card payments --- */
+
+/* The business's own Stripe account, linked through Connect. A client's card
+   payment lands there, never with Variantage. */
+export type CardPaymentsStatus = {
+  configured: boolean;
+  connected: boolean;
+  chargesEnabled: boolean;
+  detailsSubmitted: boolean;
+};
+
+export const cardPaymentsStatus = (refresh = false) =>
+  api<CardPaymentsStatus>(`/api/card-payments/status${refresh ? '?refresh=1' : ''}`);
+
+export const connectStripe = () => post<{ url: string }>('/api/card-payments/connect');
+
+export const invoiceLink = (id: string, replace = false) =>
+  post<{ url: string }>(`/api/invoices/${id}/link`, { replace });
+
+/* What the client sees. No session and no cookie: the token in the address is
+   the only key, and the API hands back the document and nothing else. */
+export type PublicInvoice = {
+  number: string;
+  status: InvoiceStatus;
+  issueDate: string;
+  dueDate: string;
+  paymentTermsDays: number;
+  seller: Invoice['seller'];
+  billTo: Invoice['billTo'];
+  items: Omit<InvoiceItem, 'id'>[];
+  subtotalCents: number;
+  discountMode: 'AMOUNT' | 'PERCENT';
+  discountValue: number;
+  discountCents: number;
+  taxCents: number;
+  totalCents: number;
+  paidCents: number;
+  balanceCents: number;
+  chargeTax: boolean;
+  taxLabel: string;
+  notes: string | null;
+  terms: string | null;
+  footer: string | null;
+  payTo: string | null;
+  logoUrl: string | null;
+  currency: string;
+  dateFormat: DateFormat;
+  canPayByCard: boolean;
+};
+
+async function publicCall<T>(path: string, method: 'GET' | 'POST'): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, { method, credentials: 'omit' });
+  const text = await res.text();
+  const body = (text ? JSON.parse(text) : null) as (T & Body) | null;
+  if (!res.ok || !body) {
+    const e = body?.error;
+    throw new ApiError(res.status, e?.code ?? 'error', e?.message ?? 'Something went wrong.');
+  }
+  return body;
+}
+
+export const getPublicInvoice = (token: string) =>
+  publicCall<{ invoice: PublicInvoice }>(`/api/public/invoices/${encodeURIComponent(token)}`, 'GET');
+
+export const startPublicCheckout = (token: string) =>
+  publicCall<{ url: string }>(`/api/public/invoices/${encodeURIComponent(token)}/checkout`, 'POST');
 
 /* ------------------------------------------------------------- dashboard --- */
 

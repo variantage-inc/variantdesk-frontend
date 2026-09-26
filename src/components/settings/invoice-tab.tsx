@@ -1,8 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { Icon } from '@/components/icon';
+import { useSession } from '@/lib/session';
 import { Field, Notice, Select, TextInput } from '@/components/form';
-import { ApiError, saveInvoiceTemplate, type SettingsPayload } from '@/lib/api';
+import {
+  ApiError,
+  cardPaymentsStatus,
+  connectStripe,
+  saveInvoiceTemplate,
+  type CardPaymentsStatus,
+  type SettingsPayload,
+} from '@/lib/api';
 import { formatDate, type DateFormat } from '@/lib/format';
 import { useDraft } from './use-draft';
 import { useSaveBar } from './save-bar';
@@ -224,6 +233,8 @@ export function InvoiceTab({
                 onChange={(next) => draft.set('invoicePayTo', next)}
               />
             </div>
+
+            <CardPayments />
           </div>
         </div>
 
@@ -324,5 +335,86 @@ function Counted({
         </span>
       </div>
     </Field>
+  );
+}
+
+/* Card payments on invoices.
+
+   The business links its OWN Stripe account; a client's card payment lands
+   there, with Stripe's fee taken from it, and never passes through Variantage.
+   Setup is Stripe's own page. Coming back from it lands here with
+   ?stripe=back, which is the moment to ask Stripe whether it is finished. */
+function CardPayments() {
+  const { user } = useSession();
+  const toast = useToast();
+  const owner = user?.role === 'OWNER';
+  const [status, setStatus] = useState<CardPaymentsStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const back = new URLSearchParams(window.location.search).has('stripe');
+    cardPaymentsStatus(back)
+      .then(setStatus)
+      .catch(() => undefined);
+  }, []);
+
+  async function connect() {
+    setBusy(true);
+    try {
+      const { url } = await connectStripe();
+      window.location.href = url;
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Stripe could not be reached.', 'err');
+      setBusy(false);
+    }
+  }
+
+  const ready = status?.chargesEnabled;
+
+  return (
+    <div className="setsec">
+      <h3>Card payments</h3>
+      <p className="ssub">
+        Let clients pay an invoice by card from its link. The money goes to your own Stripe
+        account, Stripe takes its fee from it, and the payment is recorded here with the tax
+        split, by itself.
+      </p>
+
+      {!status ? (
+        <p className="hint">Checking…</p>
+      ) : !status.configured ? (
+        <Notice tone="warn" icon="alert" title="Not available yet">
+          Card payments are not switched on for this environment.
+        </Notice>
+      ) : ready ? (
+        <Notice tone="ok" icon="check" title="Taking card payments">
+          Every invoice link now has a Pay Now button. Refunds are made in your Stripe dashboard,
+          and come off the invoice here by themselves.
+        </Notice>
+      ) : (
+        <>
+          <Notice icon="card" title={status.connected ? 'Stripe setup is not finished' : 'Not connected'}>
+            {status.connected
+              ? 'Stripe still needs some details before it can take payments for you. Carry on where you left off.'
+              : 'Connect a Stripe account, or create one, in a few minutes on Stripe’s own page. Nothing is charged to connect.'}
+          </Notice>
+          {owner ? (
+            <button
+              className="btn btn-primary"
+              type="button"
+              disabled={busy}
+              aria-busy={busy}
+              onClick={() => void connect()}
+              style={{ marginTop: 14 }}
+            >
+              <Icon name="card" size={19} />{' '}
+              {busy ? 'Opening Stripe…' : status.connected ? 'Finish Stripe setup' : 'Connect Stripe'}
+            </button>
+          ) : (
+            <p className="hint">The account owner can connect Stripe.</p>
+          )}
+        </>
+      )}
+    </div>
   );
 }
