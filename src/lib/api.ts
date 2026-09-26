@@ -5,6 +5,8 @@
    cross site scripting bug into a stolen session. Held here it dies with the
    tab, and the httpOnly refresh cookie quietly gets a new one. */
 
+import type { DateFormat } from './format';
+
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
 let accessToken: string | null = null;
@@ -494,3 +496,160 @@ export const adminBusinesses = (q?: string) =>
 export const adminBusiness = (id: string) => api<AdminBusinessDetail>(`/api/admin/businesses/${id}`);
 export const adminPayments = () => api<{ payments: AdminPayment[] }>('/api/admin/payments');
 export const adminAudit = () => api<{ entries: AuditEntry[] }>('/api/admin/audit');
+
+/* ---------------------------------------------------------- money in/out --- */
+
+export type TxType = 'INCOME' | 'EXPENSE' | 'DRAWING';
+export type TaxMode = 'ADD' | 'INCLUSIVE' | 'NONE';
+export type PaymentMethod =
+  | 'BANK_TRANSFER'
+  | 'E_TRANSFER'
+  | 'CHEQUE'
+  | 'CASH'
+  | 'CARD'
+  | 'PRE_AUTHORISED'
+  | 'OTHER';
+
+export type Named = { id: string; name: string } | null;
+
+export type Entry = {
+  id: string;
+  type: TxType;
+  date: string;
+  description: string;
+  category: Named;
+  vendor: Named;
+  client: Named;
+  subtotalCents: number;
+  taxCents: number;
+  totalCents: number;
+  taxMode: TaxMode;
+  taxRateBp: number;
+  taxLabel: string;
+  paymentMethod: PaymentMethod | null;
+  reference: string | null;
+  purpose: string | null;
+  /* Corrected at least once since it was written. */
+  amended: boolean;
+  /* Cancelled by a later correction or removal, so no longer in the books. */
+  superseded: boolean;
+  createdAt: string;
+};
+
+export type Bucket = {
+  subtotalCents: number;
+  taxCents: number;
+  totalCents: number;
+  count: number;
+};
+
+export type EntryList = {
+  entries: Entry[];
+  page: number;
+  perPage: number;
+  total: number;
+  summary: {
+    income: Bucket | null;
+    /* Expenses and drawings are summed apart even when both are on screen.
+       Adding one into the other is the error the type flag exists to stop. */
+    expense: Bucket | null;
+    drawing: Bucket | null;
+    entries: number;
+  };
+  tax: { code: string; name: string; label: string; note: string; totalBp: number };
+  currency: string;
+  dateFormat: DateFormat;
+};
+
+export type EntryFilters = {
+  from?: string;
+  to?: string;
+  search?: string;
+  categoryId?: string;
+  vendorId?: string;
+  clientId?: string;
+  paymentMethod?: string;
+  show?: 'all' | 'expenses' | 'drawings';
+  page?: number;
+};
+
+const qs = (filters: EntryFilters): string => {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== '' && value !== null) params.set(key, String(value));
+  }
+  const s = params.toString();
+  return s ? `?${s}` : '';
+};
+
+export const listIncome = (filters: EntryFilters = {}) =>
+  api<EntryList>(`/api/income${qs(filters)}`);
+
+export const listMoneyOut = (filters: EntryFilters = {}) =>
+  api<EntryList>(`/api/expenses${qs(filters)}`);
+
+export type EntryInput = {
+  date: string;
+  amount: number;
+  description: string;
+  categoryId?: string | null;
+  paymentMethod?: PaymentMethod | null;
+  reference?: string | null;
+  taxMode?: TaxMode;
+  clientId?: string | null;
+  vendorId?: string | null;
+  purpose?: string;
+};
+
+/* Every write carries an idempotency key.
+
+   The API stores the key with its answer, so a double clicked Save, or a
+   retry after a timeout, gets the first answer back instead of posting the
+   money a second time. Generated per attempt rather than per keystroke:
+   pressing Save twice on purpose, having changed something, is a different
+   request and should be. */
+const idempotent = (): HeadersInit => ({ 'X-Idempotency-Key': crypto.randomUUID() });
+
+const path: Record<TxType, string> = {
+  INCOME: '/api/income',
+  EXPENSE: '/api/expenses',
+  DRAWING: '/api/drawings',
+};
+
+export const createEntry = (type: TxType, input: EntryInput) =>
+  api<{ entry: Entry }>(path[type], {
+    method: 'POST',
+    body: JSON.stringify(input),
+    headers: idempotent(),
+  });
+
+export const updateEntry = (type: TxType, id: string, input: EntryInput) =>
+  api<{ entry: Entry }>(`${path[type]}/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+    headers: idempotent(),
+  });
+
+/* Writes a reversal. Nothing leaves the ledger, ever. */
+export const deleteEntry = (id: string) =>
+  api<{ ok: true }>(`/api/entries/${id}`, { method: 'DELETE', headers: idempotent() });
+
+export type HistoryRow = {
+  id: string;
+  date: string;
+  description: string;
+  subtotalCents: number;
+  taxCents: number;
+  totalCents: number;
+  createdAt: string;
+  current: boolean;
+};
+
+export const entryHistory = (id: string) =>
+  api<{ history: HistoryRow[] }>(`/api/entries/${id}/history`);
+
+export type Client = { id: string; name: string; email: string | null; phone: string | null };
+
+export const listClients = () => api<{ clients: Client[] }>('/api/clients');
+export const addClient = (name: string) =>
+  post<{ client: Client; clients: Client[] }>('/api/clients', { name });

@@ -66,10 +66,13 @@ export function Field({
   );
 }
 
+/* ComponentPropsWithRef rather than InputHTMLAttributes, so a caller can hold
+   a ref to the box and focus it. React 19 passes ref through as an ordinary
+   prop; the types need telling. */
 export function TextInput({
   invalid,
   ...props
-}: React.InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean }) {
+}: React.ComponentPropsWithRef<'input'> & { invalid?: boolean }) {
   return <input className="input" aria-invalid={invalid ? 'true' : undefined} {...props} />;
 }
 
