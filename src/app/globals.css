@@ -3,6 +3,7 @@
    anything a customer sees comes from design.css. */
 @import "tailwindcss";
 @import "./design.css";
+@import "./shell.css";
 
 /* The scaffold shipped a dark mode block that inverts the whole page. Removed:
    the mockups are a single light theme the client signed off, and a browser in
