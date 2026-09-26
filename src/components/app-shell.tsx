@@ -112,18 +112,9 @@ export function AppShell({ crumb, children }: { crumb: string; children: React.R
             {business?.name} <span style={{ opacity: 0.5 }}>/</span> <b>{crumb}</b>
           </div>
 
-          {/* Search is drawn because it is in the approved topbar, and disabled
-              because there is nothing to search until Phase 5 puts entries in
-              the database. An input that silently does nothing is worse. */}
-          <div className="searchbox">
-            <Icon name="search" size={19} />
-            <input
-              type="search"
-              placeholder="Search arrives with your first entries"
-              aria-label="Search"
-              disabled
-            />
-          </div>
+          {/* No global search box: each list screen has its own search, and a
+              box here that did nothing would be worse than none. */}
+          <div style={{ flex: 1 }} />
 
           <Link
             className="iconbtn"

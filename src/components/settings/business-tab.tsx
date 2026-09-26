@@ -406,10 +406,6 @@ export function BusinessTab({
             Email and phone print in the footer. Change one here and every invoice you send
             from then on carries the new detail. Issued invoices are never rewritten.
           </Notice>
-          <Notice tone="warn" icon="alert" title="Still waiting on the real details">
-            Variantage&apos;s own address, business number and footer wording drop straight in
-            once they arrive. Nothing else has to change when they do.
-          </Notice>
         </div>
       </div>
     </section>

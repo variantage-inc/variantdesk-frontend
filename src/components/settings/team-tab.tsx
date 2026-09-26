@@ -67,11 +67,25 @@ export function TeamTab() {
     };
   }, [toast]);
 
-  async function run(work: () => Promise<{ team: Team }>, done: string) {
+  /* Set when an invitation email could not be delivered: the link to pass on
+     by hand, and who it is for. */
+  const [manual, setManual] = useState<{ email: string; url: string } | null>(null);
+
+  async function run(
+    work: () => Promise<{ team: Team; emailed?: boolean; inviteUrl?: string | null }>,
+    done: string,
+    to?: string,
+  ) {
     setBusy(true);
     try {
       const r = await work();
       setTeam(r.team);
+      if (to && r.emailed === false && r.inviteUrl) {
+        setManual({ email: to, url: r.inviteUrl });
+        toast(`The email to ${to} could not be delivered. Copy the link below and send it yourself.`, 'err');
+        return;
+      }
+      if (to) setManual(null);
       toast(done);
     } catch (err) {
       toast(err instanceof ApiError ? err.message : 'That did not work. Try again.', 'err');
@@ -84,7 +98,7 @@ export function TeamTab() {
     const problem = emailRule(email);
     if (problem) return setError(problem);
     setError(null);
-    void run(() => inviteMember(email.trim()), `Invitation sent to ${email.trim()}.`).then(() =>
+    void run(() => inviteMember(email.trim()), `Invitation sent to ${email.trim()}.`, email.trim()).then(() =>
       setEmail(''),
     );
   }
@@ -212,7 +226,7 @@ export function TeamTab() {
                                 type="button"
                                 disabled={busy}
                                 onClick={() =>
-                                  void run(() => inviteMember(i.email), `Sent again to ${i.email}.`)
+                                  void run(() => inviteMember(i.email), `Sent again to ${i.email}.`, i.email)
                                 }
                               >
                                 Send again
@@ -232,6 +246,34 @@ export function TeamTab() {
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {owner && manual && (
+                  <div className="setsec">
+                    <Notice tone="warn" icon="mail" title={`The email to ${manual.email} did not go`}>
+                      Send them this link yourself, by email or message. It works once, only for{' '}
+                      {manual.email}, and expires in seven days.
+                    </Notice>
+                    <input
+                      className="input"
+                      readOnly
+                      value={manual.url}
+                      aria-label="Invitation link"
+                      onFocus={(e) => e.target.select()}
+                      style={{ fontSize: 13, height: 44, margin: '12px 0 10px' }}
+                    />
+                    <button
+                      className="btn btn-sm"
+                      type="button"
+                      onClick={() =>
+                        void navigator.clipboard
+                          .writeText(manual.url)
+                          .then(() => toast('Link copied.'))
+                      }
+                    >
+                      <Icon name="send" size={17} /> Copy the link
+                    </button>
                   </div>
                 )}
 

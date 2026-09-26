@@ -514,9 +514,9 @@ export function InvoiceBuilder({ invoiceId }: { invoiceId?: string }) {
               </p>
             </div>
 
-            <Notice icon="info" title="No Email this invoice">
-              It was cut in your review. Save it, then download or print the PDF and send it
-              however you normally do.
+            <Notice icon="info" title="Getting it to your client">
+              Once it is saved and marked as sent, the invoice has a link you can copy and send
+              your client, or you can download or print the PDF.
             </Notice>
           </aside>
         </div>

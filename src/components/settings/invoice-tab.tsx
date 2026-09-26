@@ -275,10 +275,9 @@ export function InvoiceTab({
             )}
           </div>
 
-          <Notice icon="info" title="The template replaced duplicate invoice">
-            Your review cut duplicating an old invoice, because a template does the same job
-            without carrying over last month&apos;s mistakes. Everything here is already on the
-            form before you type a thing.
+          <Notice icon="info" title="Filled in on every new invoice">
+            Everything here is already on the form before you type a thing, so there is no need
+            to copy an old invoice and carry over last month&apos;s mistakes.
           </Notice>
           <Notice tone="warn" icon="alert" title="The number can go forward, never back">
             Moving it forward is how you continue a sequence started somewhere else. Moving it

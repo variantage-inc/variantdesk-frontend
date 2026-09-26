@@ -26,7 +26,6 @@ const figtree = Figtree({
 export const metadata: Metadata = {
   title: 'Variantage Finance',
   description: 'Income, expenses, drawings and GST/HST for Canadian small business.',
-  icons: { icon: '/brand/mark.png' },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

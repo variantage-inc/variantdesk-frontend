@@ -216,58 +216,6 @@ export function BillingTab() {
               </div>
             </div>
 
-            {owner && (
-              <div className="setsec">
-                <h3>Your card</h3>
-                <p className="ssub">
-                  Card details go straight to Stripe. Variantage never sees or stores your card
-                  number.
-                </p>
-
-                {!status.billingConfigured ? (
-                  <Notice tone="warn" icon="alert" title="Card payments are not switched on yet">
-                    The Stripe keys have not been added to this environment. Everything else
-                    works, and your trial is unaffected. Adding the keys is the only step left,
-                    and no code changes with it.
-                  </Notice>
-                ) : access.hasCard ? (
-                  <>
-                    <p style={{ fontSize: 'var(--fs-label)', marginBottom: 14 }}>
-                      {access.cancelAtPeriodEnd
-                        ? `Your subscription ends on ${formatDate(access.currentPeriodEnd)}.`
-                        : access.currentPeriodEnd
-                          ? `Next payment ${formatDate(access.currentPeriodEnd)}.`
-                          : 'A card is on file.'}
-                    </p>
-                    <button
-                      className="btn"
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void goToStripe('portal')}
-                    >
-                      <Icon name="card" size={18} /> Manage billing with Stripe
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <p style={{ fontSize: 'var(--fs-label)', marginBottom: 14 }}>
-                      {access.state === 'trial'
-                        ? `Adding a card now changes nothing until your trial ends${access.trialEndsAt ? ` on ${formatDate(access.trialEndsAt)}` : ''}. It just means the account carries on instead of stopping.`
-                        : 'Add a card to start your subscription and turn writing back on.'}
-                    </p>
-                    <button
-                      className="btn btn-primary"
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void goToStripe('checkout')}
-                    >
-                      <Icon name="lock" size={18} /> Add a card with Stripe
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-
             {owner && payments.length > 0 && (
               <div className="setsec">
                 <h3>Payment history</h3>
@@ -298,6 +246,57 @@ export function BillingTab() {
                     </tbody>
                   </table>
                 </div>
+              </div>
+            )}
+
+            {owner && (
+              <div className="setsec">
+                <h3>Your card</h3>
+                <p className="ssub">
+                  Card details go straight to Stripe. Variantage never sees or stores your card
+                  number.
+                </p>
+
+                {!status.billingConfigured ? (
+                  <Notice tone="warn" icon="alert" title="Cards cannot be added right now">
+                    Card payments are unavailable at the moment. Your account and your books are
+                    not affected. Try again later.
+                  </Notice>
+                ) : access.hasCard ? (
+                  <>
+                    <p style={{ fontSize: 'var(--fs-label)', marginBottom: 14 }}>
+                      {access.cancelAtPeriodEnd
+                        ? `A card is on file. Your subscription ends on ${formatDate(access.currentPeriodEnd)}.`
+                        : access.currentPeriodEnd
+                          ? `A card is on file. Next payment ${formatDate(access.currentPeriodEnd)}.`
+                          : 'A card is on file.'}
+                    </p>
+                    <button
+                      className="btn"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void goToStripe('portal')}
+                    >
+                      <Icon name="card" size={18} /> Update card
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p style={{ fontSize: 'var(--fs-label)', marginBottom: 14 }}>
+                      {access.state === 'trial'
+                        ? `Adding a card now charges nothing until your trial ends${access.trialEndsAt ? ` on ${formatDate(access.trialEndsAt)}` : ''}. It just means the account carries on instead of stopping.`
+                        : 'Add a card to start your subscription and turn writing back on.'}
+                    </p>
+                    <button
+                      className="btn btn-primary"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void goToStripe('checkout')}
+                    >
+                      <Icon name="card" size={18} /> Add card
+                    </button>
+                  </>
+                )}
               </div>
             )}
 

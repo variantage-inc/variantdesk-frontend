@@ -295,8 +295,13 @@ export type Team = {
 };
 
 export const getTeam = () => api<Team>('/api/team');
+/* `inviteUrl` is set only when the email could not be delivered, so the
+   owner can pass the link on themselves. */
 export const inviteMember = (email: string) =>
-  post<{ ok: true; team: Team }>('/api/team/invites', { email });
+  post<{ ok: true; emailed: boolean; inviteUrl: string | null; team: Team }>(
+    '/api/team/invites',
+    { email },
+  );
 export const revokeInvite = (id: string) => del<{ team: Team }>(`/api/team/invites/${id}`);
 export const removeMember = (id: string) => del<{ team: Team }>(`/api/team/members/${id}`);
 
@@ -334,7 +339,7 @@ export type BusinessSettings = {
   email: string | null;
   phone: string | null;
   website: string | null;
-  currency: 'CAD' | 'USD' | 'PKR';
+  currency: 'CAD' | 'USD';
   dateFormat: 'YYYY/MM/DD' | 'DD/MM/YYYY' | 'MM/DD/YYYY';
   fyStartMonth: number;
   invoicePrefix: string;

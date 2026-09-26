@@ -154,10 +154,6 @@ export function SecurityTab({
             a setting rather than a rule, so a business working alone in a locked office can
             move it to 30 or 60.
           </Notice>
-          <Notice icon="shield" title="Not in Volume 1">
-            Two step verification by text or authenticator app is not in the signed scope. It
-            is the obvious next thing to add here if Variantage wants it.
-          </Notice>
         </div>
       </div>
     </section>

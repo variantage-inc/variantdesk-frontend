@@ -9,13 +9,10 @@ import { useDraft } from './use-draft';
 import { useSaveBar } from './save-bar';
 import { useToast } from './toast';
 
-/* Choose the province, and the rates follow. You never type a tax rate.
+/* The province, and the rates that follow from it. You never type a tax rate.
 
-   That is the whole point of this tab, and it is why the rate preview below is
-   read from the API's own province table rather than from anything typed here.
-   The rate that eventually lands on an invoice is worked out and stored by the
-   API when the invoice is issued, so changing province does not rewrite a
-   single document that has already gone out. */
+   The province is shown, not chosen: it is set at signup and fixed, because
+   every tax figure already in the books was worked out from it. */
 
 const MONTHS = [
   [1, 'January'],
@@ -27,7 +24,6 @@ const MONTHS = [
 const SAMPLE_CENTS = 1_154_000;
 
 type Form = {
-  province: string;
   currency: string;
   dateFormat: string;
   fyStartMonth: number;
@@ -46,7 +42,6 @@ export function TaxTab({
   const toast = useToast();
 
   const draft = useDraft<Form>({
-    province: b.province,
     currency: b.currency,
     dateFormat: b.dateFormat,
     fyStartMonth: b.fyStartMonth,
@@ -58,9 +53,7 @@ export function TaxTab({
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const v = draft.value;
-  /* The preview follows the select immediately, before anything is saved, so
-     the consequence of the choice is visible while it is being made. */
-  const chosen = data.provinces.find((p) => p.code === v.province);
+  const chosen = data.provinces.find((p) => p.code === b.province);
 
   async function save() {
     setSaving(true);
@@ -68,7 +61,6 @@ export function TaxTab({
     try {
       const payload = await saveTax(v);
       draft.commit({
-        province: payload.business.province,
         currency: payload.business.currency,
         dateFormat: payload.business.dateFormat,
         fyStartMonth: payload.business.fyStartMonth,
@@ -106,7 +98,7 @@ export function TaxTab({
             <div>
               <h2>Tax and currency</h2>
               <p className="csub">
-                Choose the province and the rates follow. You never type a tax rate.
+                Your province sets the tax. You never type a tax rate.
               </p>
             </div>
           </div>
@@ -119,17 +111,11 @@ export function TaxTab({
                 and every expense.
               </p>
 
-              <Field label="Province or territory" required error={errors.province}>
-                <Select
-                  value={v.province}
-                  onChange={(e) => draft.set('province', e.target.value)}
-                >
-                  {data.provinces.map((p) => (
-                    <option key={p.code} value={p.code}>
-                      {p.name}
-                    </option>
-                  ))}
-                </Select>
+              <Field
+                label="Province or territory"
+                hint="Set when the account was created, and fixed from then on, because every tax figure in your books was worked out from it. If your business has moved, contact support."
+              >
+                <TextInput value={chosen?.name ?? b.province} readOnly />
               </Field>
 
               <Notice icon="shield">
@@ -189,7 +175,6 @@ export function TaxTab({
                   >
                     <option value="CAD">Canadian dollar, CAD</option>
                     <option value="USD">US dollar, USD</option>
-                    <option value="PKR">Pakistani rupee, PKR</option>
                   </Select>
                 </Field>
                 <Field label="Date format" hint="YYYY/MM/DD sorts correctly and cannot be misread.">
@@ -231,17 +216,12 @@ export function TaxTab({
         <div className="rail">
           <Notice tone="ok" icon="check" title="Rates are never typed in">
             Every province is already in the system, including the ones where GST and PST are
-            charged separately rather than combined. Change the province and every new
-            invoice, every expense and the whole tax report move to the new rate together.
+            charged separately rather than combined. Every invoice, every expense and the tax
+            report use your province&apos;s rate, and each keeps the rate it was recorded at.
           </Notice>
-          <Notice tone="warn" icon="alert" title="Changing province does not rewrite history">
-            Invoices already issued keep the rate they were issued at, because that is what
-            the client was charged and what the CRA has a record of.
-          </Notice>
-          <Notice icon="info" title="Why three currencies">
-            CAD for the Canadian business, and USD and PKR because Variantage asked for them.
-            Only one is used at a time. This is the currency the business keeps its books in,
-            not a converter.
+          <Notice icon="info" title="One currency for your books">
+            Canadian or US dollars. This is the currency the business keeps its books in, not a
+            converter.
           </Notice>
         </div>
       </div>
