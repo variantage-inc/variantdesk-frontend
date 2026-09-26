@@ -18,6 +18,7 @@ import {
   type TxType,
   type Vendor,
 } from '@/lib/api';
+import { splitTax } from '@/lib/tax';
 import { money } from '@/lib/format';
 import { today } from '@/lib/period';
 
@@ -171,13 +172,7 @@ export function EntryDrawer({
      the figure that lands in the books. */
   const amount = Math.round((Number(form.amount) || 0) * 100);
   const mode3 = drawing ? 'NONE' : form.taxMode;
-  const subtotal =
-    mode3 === 'NONE'
-      ? amount
-      : mode3 === 'INCLUSIVE'
-        ? Math.round((amount * 10000) / (10000 + taxRateBp))
-        : amount;
-  const tax = mode3 === 'NONE' ? 0 : mode3 === 'INCLUSIVE' ? amount - subtotal : Math.round((amount * taxRateBp) / 10000);
+  const { subtotalCents: subtotal, taxCents: tax } = splitTax(amount, mode3, taxRateBp);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();

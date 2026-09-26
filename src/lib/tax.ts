@@ -74,3 +74,32 @@ export const PROVINCES: Province[] = [
 
 export const findProvince = (code: string): Province | undefined =>
   PROVINCES.find((p) => p.code === code);
+
+/* The three tax modes, worked out in one place.
+
+   The API does this in `lib/money.ts` and it is the authority; this is the
+   read out a screen shows BEFORE saving, with the same rounding, so the figure
+   somebody approves is the figure that lands in the books. Two screens need
+   it, the typed entry drawer and the voice confirmation, and two copies of it
+   would be two answers waiting to differ by a cent. */
+export type TaxMode = 'ADD' | 'INCLUSIVE' | 'NONE';
+
+export function splitTax(
+  amountCents: number,
+  mode: TaxMode,
+  taxRateBp: number,
+): { subtotalCents: number; taxCents: number; totalCents: number } {
+  if (mode === 'NONE') {
+    return { subtotalCents: amountCents, taxCents: 0, totalCents: amountCents };
+  }
+  if (mode === 'INCLUSIVE') {
+    const subtotal = Math.round((amountCents * 10000) / (10000 + taxRateBp));
+    return {
+      subtotalCents: subtotal,
+      taxCents: amountCents - subtotal,
+      totalCents: amountCents,
+    };
+  }
+  const tax = Math.round((amountCents * taxRateBp) / 10000);
+  return { subtotalCents: amountCents, taxCents: tax, totalCents: amountCents + tax };
+}

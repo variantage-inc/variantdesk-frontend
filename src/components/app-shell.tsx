@@ -32,7 +32,7 @@ const NAV: NavEntry[] = [
   { section: 'Money in and out' },
   { id: 'income', label: 'Income', icon: 'income', href: '/income' },
   { id: 'expenses', label: 'Expenses', icon: 'expense', href: '/expenses' },
-  { id: 'voice', label: 'Voice entry', icon: 'mic', href: '/voice', phase: 'Phase 10' },
+  { id: 'voice', label: 'Voice entry', icon: 'mic', href: '/voice' },
   { section: 'Getting paid' },
   { id: 'invoices', label: 'Invoices', icon: 'invoice', href: '/invoices' },
   { id: 'clients', label: 'Clients', icon: 'users', href: '/clients' },

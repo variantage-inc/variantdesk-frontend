@@ -1189,3 +1189,118 @@ export async function downloadReport(
 
   return name;
 }
+
+/* ----------------------------------------------------------------- voice --- */
+
+/* Dictating an entry.
+
+   Two calls, and the gap between them is the whole feature. `captureVoice`
+   sends a clip and gets back a DRAFT, which is a proposal and is money
+   nowhere. `confirmVoice` is the only one that writes, and it sends whatever
+   is on screen, including anything the owner corrected, to be validated and
+   posted exactly as a typed entry is.
+
+   Nothing here is ever saved from speech alone. */
+
+export type VoiceStatus = 'DRAFT' | 'CONFIRMED' | 'DISCARDED' | 'FAILED';
+
+export type VoiceGuess = { field: string; reason: string };
+
+export type VoiceDraft = {
+  id: string;
+  status: VoiceStatus;
+  /* What was said, as it was heard. Shown next to the fields, because "it put
+     in the wrong amount" is answerable only if the sentence is still there. */
+  transcript: string;
+  /* Null on a FAILED draft, which is the honest answer when the sentence was
+     not about a transaction. */
+  type: 'INCOME' | 'EXPENSE' | 'DRAWING' | null;
+  amountCents: number | null;
+  taxMode: 'ADD' | 'INCLUSIVE' | 'NONE' | null;
+  date: string | null;
+  description: string | null;
+  purpose: string | null;
+  /* The name as spoken, and the row it was matched to if one matched. Nothing
+     is created from speech, so an unmatched name has no id and the screen asks. */
+  party: string | null;
+  category: { id: string; name: string; kind: string } | null;
+  vendor: { id: string; name: string } | null;
+  client: { id: string; name: string } | null;
+  guesses: VoiceGuess[];
+  model: string;
+  transactionId: string | null;
+  createdAt: string;
+};
+
+export type VoiceOptions = {
+  categories: { id: string; name: string; kind: 'INCOME' | 'EXPENSE' | 'DRAWINGS' }[];
+  vendors: { id: string; name: string }[];
+  clients: { id: string; name: string }[];
+  tax: { code: string; name: string; label: string; note: string; totalBp: number };
+  currency: string;
+  dateFormat: DateFormat;
+  today: string;
+  /* False when no Gemini key is configured, so the screen can say so before
+     anybody speaks rather than failing after. */
+  configured: boolean;
+  maxSeconds: number;
+};
+
+export type VoiceConfirmInput = {
+  type: 'INCOME' | 'EXPENSE' | 'DRAWING';
+  date: string;
+  amount: number;
+  description: string;
+  categoryId: string | null;
+  clientId?: string | null;
+  vendorId?: string | null;
+  taxMode: 'ADD' | 'INCLUSIVE' | 'NONE';
+  purpose?: string;
+};
+
+export const getVoiceOptions = () => api<VoiceOptions>('/api/voice/options');
+
+/* The clip goes up as a raw body with its own content type, not as a form.
+   One file, one type, and no multipart parser on either side. */
+export async function captureVoice(clip: Blob): Promise<VoiceDraft> {
+  const send = () =>
+    fetch(`${BASE_URL}/api/voice`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'audio/wav',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
+      body: clip,
+    });
+
+  let res = await send();
+  if (res.status === 401 && (await refresh().catch(() => null))) res = await send();
+
+  const text = await res.text();
+  const body = (text ? JSON.parse(text) : null) as
+    | { draft?: VoiceDraft; error?: { code: string; message: string } }
+    | null;
+
+  if (!res.ok || !body?.draft) {
+    const e = body?.error;
+    throw new ApiError(
+      res.status,
+      e?.code ?? 'voice_failed',
+      e?.message ?? 'We could not read that clip. Try again, or type the entry in.',
+    );
+  }
+  return body.draft;
+}
+
+/* The one write, and it carries an idempotency key like every other one: a
+   double pressed Save cannot post the same entry twice. */
+export const confirmVoice = (id: string, input: VoiceConfirmInput) =>
+  api<{ draft: VoiceDraft; entryId: string }>(`/api/voice/${id}/confirm`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+    headers: idempotent(),
+  });
+
+export const discardVoice = (id: string) =>
+  post<{ draft: VoiceDraft }>(`/api/voice/${id}/discard`);
