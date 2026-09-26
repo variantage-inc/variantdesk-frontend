@@ -948,3 +948,92 @@ export const removePayment = (id: string, paymentId: string) =>
     method: 'DELETE',
     headers: idempotent(),
   });
+
+/* ------------------------------------------------------------- dashboard --- */
+
+/* Every figure here is worked out by the API from the ledger rows, in one
+   place, which the Phase 9 reports will call as well. A second copy of this
+   arithmetic in the browser would be a second answer waiting to disagree. */
+export type Bucket3 = {
+  subtotalCents: number;
+  taxCents: number;
+  totalCents: number;
+  count: number;
+};
+
+export type MonthPoint = {
+  key: string;
+  label: string;
+  year: number;
+  from: string;
+  to: string;
+  incomeCents: number;
+  expensesCents: number;
+  drawingsCents: number;
+};
+
+export type Dashboard = {
+  period: {
+    from: string;
+    to: string;
+    /* False while the period still includes today. Nothing is compared against
+       a period that has not finished. */
+    complete: boolean;
+    totalDays: number;
+    elapsedDays: number;
+  };
+  income: Bucket3;
+  expenses: Bucket3;
+  drawings: Bucket3;
+  netProfitCents: number;
+  taxOwedCents: number;
+  leftInBusinessCents: number;
+  byCategory: { id: string | null; name: string; cents: number; count: number; shareBp: number }[];
+  months: MonthPoint[];
+  /* A position today, not a total over the period, which is why it does not
+     move with the period control. */
+  invoices: {
+    owedCents: number;
+    owedCount: number;
+    overdueCents: number;
+    overdueCount: number;
+    oldest: {
+      id: string;
+      number: string;
+      clientName: string;
+      totalCents: number;
+      balanceCents: number;
+      dueDate: string;
+      daysToDue: number;
+      status: InvoiceStatus;
+    }[];
+  };
+  recent: {
+    id: string;
+    date: string;
+    type: TxType;
+    description: string;
+    party: string | null;
+    category: string | null;
+    totalCents: number;
+    fromInvoice: { id: string; number: string } | null;
+  }[];
+  /* Only present when the period has finished. */
+  previous: {
+    from: string;
+    to: string;
+    income: Bucket3;
+    expenses: Bucket3;
+    drawings: Bucket3;
+    netProfitCents: number;
+    taxOwedCents: number;
+    leftInBusinessCents: number;
+  } | null;
+  tax: { code: string; name: string; label: string; note: string; totalBp: number };
+  gstRegistered: boolean;
+  currency: string;
+  dateFormat: DateFormat;
+};
+
+export const getDashboard = (from: string, to: string) =>
+  api<Dashboard>(`/api/dashboard?from=${from}&to=${to}`);

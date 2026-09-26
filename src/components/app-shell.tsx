@@ -28,7 +28,7 @@ type NavEntry = { section: string } | NavItem;
    category inside Expenses, so there is one place to record money going out. */
 const NAV: NavEntry[] = [
   { section: 'Overview' },
-  { id: 'dashboard', label: 'Dashboard', icon: 'grid', href: '/dashboard', phase: 'Phase 7' },
+  { id: 'dashboard', label: 'Dashboard', icon: 'grid', href: '/dashboard' },
   { section: 'Money in and out' },
   { id: 'income', label: 'Income', icon: 'income', href: '/income' },
   { id: 'expenses', label: 'Expenses', icon: 'expense', href: '/expenses' },

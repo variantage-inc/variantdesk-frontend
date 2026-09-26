@@ -8,3 +8,40 @@
 /* The scaffold shipped a dark mode block that inverts the whole page. Removed:
    the mockups are a single light theme the client signed off, and a browser in
    dark mode must not repaint a finance interface into colours nobody reviewed. */
+
+/* The month buttons laid over a chart.
+
+   Not in shell.css, which is a verbatim copy of the approved mockup and is not
+   ours to edit. The mockup put focusable rects inside the SVG; those do not
+   focus reliably in any browser, so the targets are real buttons positioned on
+   top instead. The look is unchanged: transparent until hovered or focused. */
+.chartwrap { position: relative; }
+
+.hitrow {
+  position: absolute;
+  inset: 14px 22px 18px;
+  pointer-events: none;
+}
+
+.hitrow .hit {
+  position: absolute;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background .12s var(--ease);
+}
+
+.hitrow .hit:hover,
+.hitrow .hit.is-on {
+  background: rgba(46, 90, 172, .07);
+}
+
+/* Drawn inside the shape rather than as an outline, which .panel would clip. */
+.hitrow .hit:focus-visible {
+  outline: none;
+  background: rgba(46, 90, 172, .07);
+  box-shadow: inset 0 0 0 3px var(--accent-600);
+}
