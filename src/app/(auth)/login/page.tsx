@@ -27,6 +27,10 @@ function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  /* Ticked by default, as the approved screen has it. Unticking it is someone
+     telling you they are on a machine that is not theirs, which is worth
+     honouring rather than decorating. */
+  const [rememberMe, setRememberMe] = useState(true);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [problem, setProblem] = useState<string | null>(
     GOOGLE_ERRORS[params.get('error') ?? ''] ?? null,
@@ -41,7 +45,7 @@ function LoginForm() {
     setUseGoogleInstead(false);
 
     try {
-      setSession(await signIn(email, password));
+      setSession(await signIn(email, password, rememberMe));
       router.push('/dashboard');
     } catch (err) {
       if (err instanceof ApiError) {
@@ -130,11 +134,22 @@ function LoginForm() {
         </Field>
 
         <label className="check" style={{ margin: '4px 0 26px' }}>
-          <input type="checkbox" defaultChecked />
+          <input
+            type="checkbox"
+            checked={rememberMe}
+            onChange={(e) => setRememberMe(e.target.checked)}
+          />
           <span className="box">
             <Icon name="check" size={15} sw={3.4} />
           </span>
-          <span>Keep me signed in on this computer</span>
+          <span>
+            Keep me signed in on this computer
+            {!rememberMe && (
+              <span className="hint" style={{ display: 'block', margin: '2px 0 0' }}>
+                You will be signed out when you close the browser.
+              </span>
+            )}
+          </span>
         </label>
 
         <SubmitButton busy={busy} busyLabel="Signing you in…">

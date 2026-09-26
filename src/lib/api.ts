@@ -120,8 +120,12 @@ function refresh(): Promise<Session | null> {
 
 export const restoreSession = refresh;
 
-export async function signIn(email: string, password: string): Promise<Session> {
-  const session = await post<Session>('/api/auth/login', { email, password });
+export async function signIn(
+  email: string,
+  password: string,
+  rememberMe: boolean,
+): Promise<Session> {
+  const session = await post<Session>('/api/auth/login', { email, password, rememberMe });
   setAccessToken(session.accessToken);
   return session;
 }
