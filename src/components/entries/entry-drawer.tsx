@@ -5,7 +5,8 @@ import { Field, Notice, Select, TextInput } from '@/components/form';
 import { Icon } from '@/components/icon';
 import {
   ApiError,
-  addClient,
+  createClient,
+  listClients,
   createEntry,
   updateEntry,
   type Category,
@@ -211,12 +212,15 @@ export function EntryDrawer({
     }
   }
 
+  /* Adding a client from here creates the same record the Clients screen
+     works with, so there is one list rather than a thin one for this form. */
   async function saveClient() {
     if (!newClient.trim()) return;
     try {
-      const r = await addClient(newClient.trim());
-      onClientAdded(r.clients);
-      set('clientId', r.client.id);
+      const created = await createClient({ name: newClient.trim() });
+      const refreshed = await listClients();
+      onClientAdded(refreshed.clients);
+      set('clientId', created.client.id);
       setNewClient('');
     } catch (err) {
       setProblem(err instanceof ApiError ? err.message : 'We could not add that client.');

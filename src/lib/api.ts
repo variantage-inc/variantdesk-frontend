@@ -533,6 +533,10 @@ export type Entry = {
   amended: boolean;
   /* Cancelled by a later correction or removal, so no longer in the books. */
   superseded: boolean;
+  /* Set when a payment on an invoice posted this. It belongs to that invoice
+     and cannot be edited here: changing it would move the money without moving
+     the invoice balance. */
+  fromInvoice: { id: string; number: string } | null;
   createdAt: string;
 };
 
@@ -555,6 +559,10 @@ export type EntryList = {
     expense: Bucket | null;
     drawing: Bucket | null;
     entries: number;
+    /* How much of the income was posted by a payment on an invoice rather than
+       typed in by hand. Zero on the money out screen. */
+    fromInvoicesCents: number;
+    fromInvoicesCount: number;
   };
   tax: { code: string; name: string; label: string; note: string; totalBp: number };
   currency: string;
@@ -697,8 +705,246 @@ export type Activity = {
 export const listActivity = (filters: { from?: string; to?: string; page?: number } = {}) =>
   api<Activity>(`/api/activity${qs(filters as EntryFilters)}`);
 
-export type Client = { id: string; name: string; email: string | null; phone: string | null };
+/* ------------------------------------------------------ clients, invoices --- */
 
-export const listClients = () => api<{ clients: Client[] }>('/api/clients');
-export const addClient = (name: string) =>
-  post<{ client: Client; clients: Client[] }>('/api/clients', { name });
+export type Client = {
+  id: string;
+  name: string;
+  contactName: string | null;
+  email: string | null;
+  phone: string | null;
+  since: string;
+  paymentTermsDays: number | null;
+  /* Every figure here is worked out from the invoices, never stored on the
+     client, so a balance cannot drift away from the invoices underneath it. */
+  billedCents: number;
+  paidCents: number;
+  outstandingCents: number;
+  draftCents: number;
+  invoiceCount: number;
+  draftCount: number;
+  overdueCount: number;
+  averageDaysToPay: number | null;
+};
+
+export type ClientList = {
+  clients: Client[];
+  totals: { billedCents: number; paidCents: number; outstandingCents: number };
+  currency: string;
+  dateFormat: DateFormat;
+};
+
+export const listClients = (search?: string) =>
+  api<ClientList>(`/api/clients${search ? `?search=${encodeURIComponent(search)}` : ''}`);
+
+export type ClientInput = {
+  name: string;
+  contactName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  city?: string | null;
+  province?: string | null;
+  postalCode?: string | null;
+  paymentTermsDays?: number | null;
+  notes?: string | null;
+};
+
+export type ClientDetail = {
+  client: ClientInput & {
+    id: string;
+    since: string;
+    archived: boolean;
+    /* What the business template says, shown when this client has no override
+       of their own, so the box is never just blank. */
+    defaultTermsDays: number;
+  };
+  stats: Omit<Client, 'id' | 'name' | 'contactName' | 'email' | 'phone' | 'since' | 'paymentTermsDays'>;
+  invoices: Invoice[];
+  payments: (Payment & { invoiceNumber: string; invoiceId: string })[];
+  currency: string;
+  dateFormat: DateFormat;
+};
+
+export const getClient = (id: string) => api<ClientDetail>(`/api/clients/${id}`);
+export const createClient = (input: ClientInput) => post<ClientDetail>('/api/clients', input);
+export const updateClient = (id: string, input: ClientInput) =>
+  put<ClientDetail>(`/api/clients/${id}`, input);
+export const archiveClient = (id: string) => del<{ ok: true }>(`/api/clients/${id}`);
+
+/* Five statuses, and every one of them is WORKED OUT from the payments and the
+   due date rather than stored. A stored status is a second copy of what the
+   payments already say, and the two drift the first time a due date passes at
+   midnight without anybody visiting the page. */
+export type InvoiceStatus = 'draft' | 'sent' | 'part' | 'paid' | 'overdue';
+
+export type InvoiceItem = {
+  id: string;
+  description: string;
+  quantity: number;
+  unitPriceCents: number;
+  lineTotalCents: number;
+};
+
+export type Payment = {
+  id: string;
+  date: string;
+  amountCents: number;
+  method: PaymentMethod | null;
+  reference: string | null;
+  by: string;
+  at: string;
+  transactionId: string;
+};
+
+export type Invoice = {
+  id: string;
+  number: string;
+  client: { id: string; name: string };
+  issueDate: string;
+  dueDate: string;
+  paymentTermsDays: number;
+  /* Negative once it is late, so the list can say "12 days late" rather than
+     making the reader subtract two dates. */
+  daysToDue: number;
+  status: InvoiceStatus;
+  subtotalCents: number;
+  discountMode: 'AMOUNT' | 'PERCENT';
+  discountValue: number;
+  discountCents: number;
+  taxableCents: number;
+  taxCents: number;
+  totalCents: number;
+  paidCents: number;
+  balanceCents: number;
+  chargeTax: boolean;
+  taxLabel: string;
+  notes: string | null;
+  sentAt: string | null;
+  seller: {
+    name: string;
+    address: string | null;
+    email: string | null;
+    phone: string | null;
+    gstHstNumber: string | null;
+  };
+  billTo: { name: string; contact: string | null; address: string | null };
+  terms: string | null;
+  footer: string | null;
+  payTo: string | null;
+  items: InvoiceItem[];
+  payments: Payment[];
+  createdAt: string;
+};
+
+export type InvoiceList = {
+  invoices: Invoice[];
+  total: number;
+  page: number;
+  perPage: number;
+  counts: Record<'all' | InvoiceStatus, number>;
+  summary: {
+    owedCents: number;
+    owedCount: number;
+    lateCents: number;
+    lateCount: number;
+    oldestLateDays: number;
+    draftCents: number;
+    draftCount: number;
+  };
+  currency: string;
+  dateFormat: DateFormat;
+};
+
+export const listInvoices = (
+  filters: { status?: string; clientId?: string; search?: string; page?: number } = {},
+) => api<InvoiceList>(`/api/invoices${qs(filters as EntryFilters)}`);
+
+export const getInvoice = (id: string) => api<{ invoice: Invoice }>(`/api/invoices/${id}`);
+
+export type InvoiceDefaults = {
+  /* Shown, not reserved. Reserving it would burn a number every time somebody
+     opened the builder and changed their mind, and the sequence has to be
+     unbroken. */
+  nextNumber: string;
+  paymentTermsDays: number;
+  terms: string | null;
+  footer: string | null;
+  payTo: string | null;
+  gstHstNumber: string | null;
+  gstRegistered: boolean;
+  sellerName: string;
+  sellerAddress: string | null;
+  tax: { code: string; name: string; label: string; note: string; totalBp: number };
+  currency: string;
+  dateFormat: DateFormat;
+};
+
+export const invoiceDefaults = () => api<InvoiceDefaults>('/api/invoices/new');
+
+export type InvoiceInput = {
+  clientId: string;
+  issueDate: string;
+  paymentTermsDays: number;
+  lines: { description: string; quantity: number; unitPrice: number }[];
+  discountMode: 'AMOUNT' | 'PERCENT';
+  discountValue: number;
+  chargeTax: boolean;
+  notes?: string | null;
+};
+
+export const createInvoice = (input: InvoiceInput) =>
+  api<{ invoice: Invoice }>('/api/invoices', {
+    method: 'POST',
+    body: JSON.stringify(input),
+    headers: idempotent(),
+  });
+
+export const updateInvoice = (id: string, input: InvoiceInput) =>
+  api<{ invoice: Invoice }>(`/api/invoices/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+    headers: idempotent(),
+  });
+
+/* Turns a draft into a debt the client owes. Posts no income: that happens
+   when the money arrives, which is what stops it being counted twice. */
+export const sendInvoice = (id: string) =>
+  api<{ invoice: Invoice }>(`/api/invoices/${id}/send`, { method: 'POST', headers: idempotent() });
+
+export const voidInvoice = (id: string) =>
+  api<{ ok: true }>(`/api/invoices/${id}`, { method: 'DELETE', headers: idempotent() });
+
+export type PaymentContext = {
+  number: string;
+  clientName: string;
+  totalCents: number;
+  paidCents: number;
+  balanceCents: number;
+  subtotalCents: number;
+  taxCents: number;
+  taxLabel: string;
+  chargeTax: boolean;
+};
+
+export const paymentContext = (id: string) =>
+  api<PaymentContext>(`/api/invoices/${id}/payment-context`);
+
+/* The one place a payment is recorded, and the one place income is posted for
+   an invoice. There is deliberately no second door. */
+export const recordPayment = (
+  id: string,
+  input: { date: string; amount: number; method?: PaymentMethod | null; reference?: string | null },
+) =>
+  api<{ invoice: Invoice }>(`/api/invoices/${id}/payments`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+    headers: idempotent(),
+  });
+
+export const removePayment = (id: string, paymentId: string) =>
+  api<{ invoice: Invoice }>(`/api/invoices/${id}/payments/${paymentId}`, {
+    method: 'DELETE',
+    headers: idempotent(),
+  });

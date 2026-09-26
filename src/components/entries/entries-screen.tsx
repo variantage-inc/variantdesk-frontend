@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppShell } from '@/components/app-shell';
 import { Notice } from '@/components/form';
@@ -236,8 +237,12 @@ function Inner({ side }: { side: 'INCOME' | 'MONEY_OUT' }) {
               tone="s-tax"
               icon="invoice"
               label="Posted from invoices"
-              value={money(0, currency)}
-              meta="Arrives when invoicing does"
+              value={money(summary?.fromInvoicesCents ?? 0, currency)}
+              meta={
+                summary?.fromInvoicesCount
+                  ? `${summary.fromInvoicesCount} entr${summary.fromInvoicesCount === 1 ? 'y' : 'ies'} written for you when an invoice was paid`
+                  : 'Recording a payment on an invoice posts the income here'
+              }
             />
           </>
         ) : (
@@ -445,6 +450,13 @@ function Inner({ side }: { side: 'INCOME' | 'MONEY_OUT' }) {
                   <td className="date">{formatDate(e.date, fmt)}</td>
                   <td>
                     <div className="ttl">{e.description}</div>
+                    {e.fromInvoice && (
+                      <div className="sub2">
+                        <Link className="tag tag-lock" href={`/invoices/${e.fromInvoice.id}`}>
+                          From invoice {e.fromInvoice.number}
+                        </Link>
+                      </div>
+                    )}
                     {(e.type === 'DRAWING' || e.amended || e.reference) && (
                       <div className="sub2">
                         {e.type === 'DRAWING' && (
@@ -498,7 +510,22 @@ function Inner({ side }: { side: 'INCOME' | 'MONEY_OUT' }) {
                       >
                         <Icon name="clock" size={17} />
                       </button>
-                      {canWrite && (
+                      {/* An entry posted by a payment on an invoice belongs to
+                          that invoice. Editing it here would move the money
+                          without moving the invoice balance, so the row offers
+                          the invoice rather than an edit button that would be
+                          refused by the API anyway. */}
+                      {e.fromInvoice ? (
+                        <Link
+                          href={`/invoices/${e.fromInvoice.id}`}
+                          aria-label={`Open invoice ${e.fromInvoice.number}`}
+                          title="Change this on the invoice"
+                          style={{ display: 'grid', placeItems: 'center' }}
+                        >
+                          <Icon name="invoice" size={17} />
+                        </Link>
+                      ) : (
+                      canWrite && (
                         <>
                         <button
                           type="button"
@@ -516,6 +543,7 @@ function Inner({ side }: { side: 'INCOME' | 'MONEY_OUT' }) {
                           <Icon name="trash" size={17} />
                         </button>
                         </>
+                      )
                       )}
                     </div>
                   </td>
