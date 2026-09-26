@@ -6,6 +6,8 @@ import { Notice } from '@/components/form';
 import { Icon } from '@/components/icon';
 import { ToastProvider, useToast } from '@/components/settings/toast';
 import { EntryDrawer, type DrawerMode } from './entry-drawer';
+import { HistoryModal } from './history-modal';
+import { ChangesDrawer } from './changes-drawer';
 import {
   ApiError,
   deleteEntry,
@@ -72,6 +74,8 @@ function Inner({ side }: { side: 'INCOME' | 'MONEY_OUT' }) {
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [drawer, setDrawer] = useState<DrawerMode | null>(null);
+  const [history, setHistory] = useState<string | null>(null);
+  const [changes, setChanges] = useState(false);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
@@ -173,6 +177,11 @@ function Inner({ side }: { side: 'INCOME' | 'MONEY_OUT' }) {
               </button>
             ))}
           </div>
+          {/* Reachable from the screen the figures are on, because that is
+              where somebody is standing when a total looks wrong. */}
+          <button className="btn btn-sm" type="button" onClick={() => setChanges(true)}>
+            <Icon name="clock" size={18} /> What changed
+          </button>
           <button
             className="btn btn-primary"
             type="button"
@@ -441,7 +450,16 @@ function Inner({ side }: { side: 'INCOME' | 'MONEY_OUT' }) {
                         {e.type === 'DRAWING' && (
                           <span className="tag tag-draw">Owner drawing</span>
                         )}{' '}
-                        {e.amended && <span className="tag tag-lock">Corrected</span>}{' '}
+                        {e.amended && (
+                          <button
+                            type="button"
+                            className="tag tag-lock"
+                            style={{ border: 0, cursor: 'pointer' }}
+                            onClick={() => setHistory(e.id)}
+                          >
+                            Corrected, see what changed
+                          </button>
+                        )}{' '}
                         {e.reference && <span className="muted">Ref {e.reference}</span>}
                       </div>
                     )}
@@ -468,8 +486,20 @@ function Inner({ side }: { side: 'INCOME' | 'MONEY_OUT' }) {
                     {money(e.totalCents, currency)}
                   </td>
                   <td>
-                    {canWrite && (
-                      <div className="rowacts">
+                    <div className="rowacts">
+                      {/* On every row, not only corrected ones. Somebody
+                          checking a figure should not have to already know it
+                          was changed to find out that it was. */}
+                      <button
+                        type="button"
+                        aria-label={`History of ${e.description}`}
+                        title="What changed"
+                        onClick={() => setHistory(e.id)}
+                      >
+                        <Icon name="clock" size={17} />
+                      </button>
+                      {canWrite && (
+                        <>
                         <button
                           type="button"
                           aria-label={`Edit ${e.description}`}
@@ -485,8 +515,9 @@ function Inner({ side }: { side: 'INCOME' | 'MONEY_OUT' }) {
                         >
                           <Icon name="trash" size={17} />
                         </button>
-                      </div>
-                    )}
+                        </>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -579,11 +610,15 @@ function Inner({ side }: { side: 'INCOME' | 'MONEY_OUT' }) {
       <div style={{ marginTop: 18 }}>
         <Notice icon="shield" title="Nothing here is ever really deleted">
           Editing an entry keeps the old version and writes a correction; removing one writes a
-          reversal. The books can always be shown as they stood on any day, which is what the
-          CRA&apos;s six year rule asks for. Receipts arrive with document storage, and
-          attaching one to an entry will be possible then.
+          reversal. The clock on any row shows every version it has had and who changed it, and{' '}
+          <b>What changed</b> above lists every correction and removal in this period. Receipts
+          arrive with document storage, and attaching one to an entry will be possible then.
         </Notice>
       </div>
+
+      {history && <HistoryModal entryId={history} onClose={() => setHistory(null)} />}
+
+      {changes && <ChangesDrawer range={range} onClose={() => setChanges(false)} />}
 
       {confirming && (
         <ConfirmRemove

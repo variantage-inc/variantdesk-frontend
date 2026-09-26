@@ -634,19 +634,68 @@ export const updateEntry = (type: TxType, id: string, input: EntryInput) =>
 export const deleteEntry = (id: string) =>
   api<{ ok: true }>(`/api/entries/${id}`, { method: 'DELETE', headers: idempotent() });
 
-export type HistoryRow = {
+/* What changed, when, and who changed it.
+
+   The payoff for the append only ledger. A figure that has moved is the most
+   common thing anybody asks about a set of books, and the answer is almost
+   never that the software is wrong: somebody corrected an entry weeks ago. */
+export type Change = { field: string; from: string; to: string };
+
+export type Version = {
   id: string;
+  at: string;
+  by: string;
   date: string;
   description: string;
   subtotalCents: number;
   taxCents: number;
   totalCents: number;
-  createdAt: string;
+  taxLabel: string;
+  category: string | null;
+  party: string | null;
+  reference: string | null;
+  purpose: string | null;
+  /* Only the fields that moved. Empty on the first version. */
+  changed: Change[];
   current: boolean;
 };
 
-export const entryHistory = (id: string) =>
-  api<{ history: HistoryRow[] }>(`/api/entries/${id}/history`);
+export type EntryHistory = {
+  versions: Version[];
+  /* Set when the entry was removed rather than corrected. */
+  removed: { at: string; by: string } | null;
+  /* Where the live version is now, if this id has been superseded. */
+  supersededBy: string | null;
+  currency: string;
+};
+
+export const entryHistory = (id: string) => api<EntryHistory>(`/api/entries/${id}/history`);
+
+export type ActivityRow = {
+  id: string;
+  action: 'corrected' | 'removed';
+  at: string;
+  by: string;
+  type: TxType;
+  date: string;
+  description: string;
+  /* Null for a removal: there is nothing left to open. */
+  entryId: string | null;
+  fromCents: number;
+  toCents: number | null;
+  changed: Change[];
+};
+
+export type Activity = {
+  entries: ActivityRow[];
+  total: number;
+  page: number;
+  perPage: number;
+  currency: string;
+};
+
+export const listActivity = (filters: { from?: string; to?: string; page?: number } = {}) =>
+  api<Activity>(`/api/activity${qs(filters as EntryFilters)}`);
 
 export type Client = { id: string; name: string; email: string | null; phone: string | null };
 
