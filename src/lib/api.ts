@@ -1037,3 +1037,155 @@ export type Dashboard = {
 
 export const getDashboard = (from: string, to: string) =>
   api<Dashboard>(`/api/dashboard?from=${from}&to=${to}`);
+
+/* --------------------------------------------------------------- reports --- */
+
+/* The seven reports are built by the API as DOCUMENTS: a heading, some cards,
+   some notices, some tables. This screen draws that document, and the PDF and
+   the spreadsheet draw the same one on the server, so the file somebody sends
+   their accountant cannot say something different from the screen they sent it
+   from.
+
+   Nothing here works a figure out. Every number arrives ready, in cents, from
+   modules/reporting/derive.ts, which is also what the dashboard reads. */
+
+export type ReportId =
+  | 'income'
+  | 'expenses'
+  | 'profit'
+  | 'tax'
+  | 'invoices'
+  | 'drawings'
+  | 'cashflow';
+
+export type ReportTone = 'in' | 'out' | 'draw' | 'muted';
+
+export type ReportCell = {
+  cents?: number;
+  percent?: number;
+  text?: string;
+  sub?: string;
+  subTone?: 'late';
+  strong?: boolean;
+  tone?: ReportTone;
+  align?: 'right';
+  bars?: { share: number; tone: ReportTone }[];
+  pill?: { label: string; cls: string };
+};
+
+export type ReportTable = {
+  title: string;
+  columns: { label: string; align?: 'right'; width?: string }[];
+  rows: { cells: ReportCell[]; tone?: 'draw' }[];
+  foot?: ReportCell[];
+};
+
+export type ReportKpi = {
+  label: string;
+  cents?: number;
+  text?: string;
+  note?: string;
+  tone?: 'in' | 'out' | 'draw';
+  /* Absent for a period that has not finished. The API withholds it rather
+     than sending a number this screen has to remember not to draw. */
+  delta?: { percent: number; label: string };
+};
+
+export type ReportNote = {
+  tone: 'info' | 'warn' | 'ok' | 'draw';
+  icon: string;
+  title: string;
+  body: string;
+};
+
+export type ReportDoc = {
+  id: ReportId;
+  name: string;
+  blurb: string;
+  period: {
+    from: string;
+    to: string;
+    label: string;
+    rangeLabel: string;
+    complete: boolean;
+    totalDays: number;
+    elapsedDays: number;
+    /* False on the invoice report, which is a position today rather than a
+       total for a range. */
+    scoped: boolean;
+  };
+  basis: string | null;
+  seller: {
+    name: string;
+    address: string | null;
+    email: string | null;
+    phone: string | null;
+    gstHstNumber: string | null;
+    gstRegistered: boolean;
+  };
+  preparedOn: string;
+  currency: string;
+  dateFormat: DateFormat;
+  taxLabel: string;
+  kpis: ReportKpi[];
+  notes: ReportNote[];
+  tables: ReportTable[];
+  footnote: string;
+};
+
+export type ReportChoice = { id: ReportId; icon: string; name: string; blurb: string };
+
+export const getReports = () => api<{ reports: ReportChoice[] }>('/api/reports');
+
+export const getReport = (id: ReportId, from: string, to: string, compare: boolean) =>
+  api<{ report: ReportDoc }>(
+    `/api/reports/${id}?from=${from}&to=${to}&compare=${compare ? 1 : 0}`,
+  );
+
+/* The export.
+
+   Fetched with the access token like every other call, rather than linked to.
+   A plain link carries no Authorization header, so making one work would mean
+   putting a token in the URL, and a URL is the one place a credential must
+   never be: it lands in browser history, in server logs and in whatever the
+   customer pastes into an email. The file arrives as a blob and is handed to
+   the browser from memory. */
+export async function downloadReport(
+  id: ReportId,
+  format: 'pdf' | 'xlsx',
+  from: string,
+  to: string,
+  compare: boolean,
+): Promise<string> {
+  const path = `/api/reports/${id}/${format}?from=${from}&to=${to}&compare=${compare ? 1 : 0}`;
+
+  const fetchIt = () =>
+    fetch(`${BASE_URL}${path}`, {
+      credentials: 'include',
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    });
+
+  let res = await fetchIt();
+  /* One retry after a refresh, the same rule the JSON calls follow. */
+  if (res.status === 401 && (await refresh().catch(() => null))) res = await fetchIt();
+
+  if (!res.ok) {
+    throw new ApiError(res.status, 'export_failed', 'We could not build that file. Try again.');
+  }
+
+  const disposition = res.headers.get('Content-Disposition') ?? '';
+  const name = /filename="([^"]+)"/.exec(disposition)?.[1] ?? `report.${format}`;
+
+  const url = URL.createObjectURL(await res.blob());
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  /* Revoked on a timer rather than immediately: Safari has not finished
+     reading the blob when click() returns. */
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+
+  return name;
+}

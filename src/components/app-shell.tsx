@@ -38,7 +38,7 @@ const NAV: NavEntry[] = [
   { id: 'clients', label: 'Clients', icon: 'users', href: '/clients' },
   { section: 'Records' },
   { id: 'receipts', label: 'Receipts', icon: 'receipt', href: '/receipts', phase: 'Phase 8' },
-  { id: 'reports', label: 'Reports', icon: 'chart', href: '/reports', phase: 'Phase 9' },
+  { id: 'reports', label: 'Reports', icon: 'chart', href: '/reports' },
   { section: 'Setup' },
   { id: 'settings', label: 'Settings', icon: 'settings', href: '/settings' },
 ];

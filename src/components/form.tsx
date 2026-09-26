@@ -175,7 +175,7 @@ export function Notice({
   title,
   children,
 }: {
-  tone?: 'info' | 'ok' | 'warn' | 'err';
+  tone?: 'info' | 'ok' | 'warn' | 'err' | 'draw';
   icon?: React.ComponentProps<typeof Icon>['name'];
   title?: string;
   children: React.ReactNode;

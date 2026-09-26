@@ -232,6 +232,7 @@ const PATHS = {
       <circle cx="12" cy="12" r="3" />
     </>
   ),
+  wave: <path d="M3 12h4l3-8 4 16 3-8h4" />,
   print: (
     <>
       <polyline points="6 9 6 2 18 2 18 9" />
