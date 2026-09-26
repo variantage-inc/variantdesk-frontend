@@ -83,7 +83,16 @@ export type User = {
   avatarUrl: string | null;
 };
 
-export type Business = { id: string; name: string; province?: string };
+export type Business = {
+  id: string;
+  name: string;
+  province?: string;
+  currency?: string;
+  /* Drive the idle logout. Sent with every session, not just with /me, so the
+     browser can start counting the moment someone signs in. */
+  idleTimeoutMinutes?: number;
+  idleWarningSeconds?: number;
+};
 export type Session = { accessToken: string; user: User; business: Business };
 
 /* Refreshing is deduplicated across the whole app.
