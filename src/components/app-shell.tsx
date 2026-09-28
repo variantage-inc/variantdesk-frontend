@@ -116,6 +116,14 @@ export function AppShell({ crumb, children }: { crumb: string; children: React.R
               box here that did nothing would be worse than none. */}
           <div style={{ flex: 1 }} />
 
+          {/* Staff only. The API refuses /api/admin to everyone else, so this
+              is a way in, not a guard. */}
+          {user?.platformRole === 'SUPERADMIN' && (
+            <Link className="btn btn-sm" href="/admin" style={{ marginRight: 10 }}>
+              Superadmin
+            </Link>
+          )}
+
           <Link
             className="iconbtn"
             href="/settings#billing"

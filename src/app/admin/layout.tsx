@@ -44,6 +44,9 @@ function StaffOnly({ children }: { children: React.ReactNode }) {
             Variantage <span style={{ opacity: 0.5 }}>/</span> <b>Superadmin</b>
           </div>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
+            <Link className="btn btn-sm" href="/settings#security">
+              Change password
+            </Link>
             <Link className="btn btn-sm" href="/dashboard">
               Back to my books
             </Link>
