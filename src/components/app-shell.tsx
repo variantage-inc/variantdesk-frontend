@@ -2,9 +2,10 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { UserMenu } from './user-menu';
 import { Icon, type IconName } from './icon';
 import { useSession } from '@/lib/session';
-import { initials, days } from '@/lib/format';
+import { days } from '@/lib/format';
 import { findProvince } from '@/lib/tax';
 
 /* The frame every signed in screen sits inside.
@@ -134,16 +135,7 @@ export function AppShell({ crumb, children }: { crumb: string; children: React.R
             </Link>
           )}
 
-          <div className="who">
-            <span className="av">{initials(user?.firstName ?? '', user?.lastName ?? '')}</span>
-            <span>
-              <span className="nm">
-                {user?.firstName} {user?.lastName}
-              </span>
-              <br />
-              <span className="bz">{user?.role === 'OWNER' ? 'Owner' : 'Member'}</span>
-            </span>
-          </div>
+          <UserMenu />
         </header>
 
         <div className="body">
