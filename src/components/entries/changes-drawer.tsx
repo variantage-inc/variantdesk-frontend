@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Notice } from '@/components/form';
 import { Icon } from '@/components/icon';
+import { ChangeList } from './change-list';
 import { ApiError, listActivity, type Activity } from '@/lib/api';
 import { formatDate, formatDateTime, money } from '@/lib/format';
 import type { Range } from '@/lib/period';
@@ -128,24 +129,7 @@ export function ChangesDrawer({ range, onClose }: { range: Range; onClose: () =>
                   affects {formatDate(r.date)}
                 </div>
 
-                {r.changed.length > 0 && (
-                  <ul
-                    style={{ listStyle: 'none', margin: '8px 0 0', padding: 0, display: 'grid', gap: 5 }}
-                  >
-                    {r.changed.map((c) => (
-                      <li key={c.field} style={{ fontSize: 'var(--fs-tiny)', lineHeight: 1.5 }}>
-                        <b>{c.field}</b>{' '}
-                        <span
-                          className="muted"
-                          style={{ textDecoration: 'line-through', opacity: 0.75 }}
-                        >
-                          {c.from}
-                        </span>{' '}
-                        <Icon name="arrowRight" size={12} /> <b>{c.to}</b>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                <ChangeList changes={r.changed} />
 
                 {r.action === 'removed' && (
                   <p className="hint" style={{ margin: '8px 0 0' }}>

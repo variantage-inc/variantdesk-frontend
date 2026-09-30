@@ -53,7 +53,9 @@ export default function SettingsPage() {
 }
 
 function SettingsInner() {
-  const { setBusiness } = useSession();
+  const { setBusiness, user } = useSession();
+  /* The staff account is never billed, so it has no plan to show. */
+  const tabs = TABS.filter((t) => t.key !== 'billing' || user?.platformRole !== 'SUPERADMIN');
   const [data, setData] = useState<SettingsPayload | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
@@ -63,7 +65,7 @@ function SettingsInner() {
      /settings#billing, and somebody already on Settings gets no remount, so a
      copy held in state would stay on the wrong tab. */
   const hash = useHash();
-  const tab: TabKey = TABS.some((t) => t.key === hash) ? (hash as TabKey) : 'business';
+  const tab: TabKey = tabs.some((t) => t.key === hash) ? (hash as TabKey) : 'business';
 
   useEffect(() => {
     let cancelled = false;
@@ -116,7 +118,7 @@ function SettingsInner() {
       </div>
 
       <div className="statustabs" style={{ padding: '0 0 18px' }} role="tablist">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.key}
             type="button"

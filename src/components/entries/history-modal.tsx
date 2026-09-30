@@ -5,6 +5,7 @@ import { Notice } from '@/components/form';
 import { Icon } from '@/components/icon';
 import { ApiError, entryHistory, type EntryHistory } from '@/lib/api';
 import { formatDateTime, money } from '@/lib/format';
+import { ChangeList } from './change-list';
 
 /* Every version this entry has had.
 
@@ -46,140 +47,84 @@ export function HistoryModal({ entryId, onClose }: { entryId: string; onClose: (
   return (
     <div className="scrim" onClick={onClose}>
       <div
-        className="card rise d1"
-        style={{ maxWidth: 640, textAlign: 'left' }}
+        className="hist rise d1"
         role="dialog"
         aria-modal="true"
         aria-labelledby="hist-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 6 }}>
-          <div style={{ flex: 1 }}>
-            <h2
-              id="hist-title"
-              style={{ fontFamily: 'var(--display)', fontSize: 'var(--fs-h1)' }}
-            >
-              What changed
-            </h2>
-            <p className="sub" style={{ margin: '6px 0 0', color: 'var(--ink-3)' }}>
-              Every version of this entry, oldest first. Nothing is ever overwritten.
-            </p>
+        <div className="hist-head">
+          <div>
+            <h2 id="hist-title">What changed</h2>
+            <p className="sub">Every version of this entry, oldest first.</p>
           </div>
           <button className="x" onClick={onClose} aria-label="Close">
             <Icon name="x" size={20} />
           </button>
         </div>
 
-        {problem && (
-          <div style={{ marginTop: 18 }}>
+        <div className="hist-body">
+          {problem && (
             <Notice tone="err" icon="alert">
               {problem}
             </Notice>
-          </div>
-        )}
+          )}
 
-        {!data && !problem && (
-          <p className="hint" style={{ marginTop: 20 }}>
-            Loading…
-          </p>
-        )}
+          {!data && !problem && <p className="hint">Loading…</p>}
 
-        {data?.removed && (
-          <div style={{ margin: '18px 0 0' }}>
-            <Notice tone="warn" icon="trash" title="This entry has been removed">
-              {data.removed.by} removed it on {formatDateTime(data.removed.at)}. It is off your
-              figures, and still here.
-            </Notice>
-          </div>
-        )}
-
-        {versions.length === 1 && !data?.removed && (
-          <div style={{ margin: '18px 0 0' }}>
-            <Notice tone="ok" icon="check" title="This entry has never been changed">
-              It reads exactly as it was written.
-            </Notice>
-          </div>
-        )}
-
-        <div style={{ marginTop: 22, display: 'grid', gap: 14 }}>
-          {versions.map((v, i) => (
-            <div
-              key={v.id}
-              className="rowitem"
-              style={{
-                display: 'block',
-                borderColor: v.current ? 'var(--navy-700)' : undefined,
-                background: v.current ? 'var(--blue-50)' : undefined,
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'baseline',
-                  gap: 10,
-                  flexWrap: 'wrap',
-                  marginBottom: v.changed.length ? 10 : 0,
-                }}
-              >
-                <b style={{ fontSize: 'var(--fs-label)' }}>
-                  {i === 0 ? 'As entered' : `Correction ${i}`}
-                </b>
-                <span
-                  style={{
-                    fontVariantNumeric: 'tabular-nums',
-                    fontWeight: 700,
-                    marginLeft: 'auto',
-                  }}
-                >
-                  {money(v.totalCents, currency)}
-                </span>
-                {v.current && <span className="tag tag-lock">Current</span>}
-              </div>
-
-              <div className="ct" style={{ fontWeight: 400 }}>
-                {v.by} · {formatDateTime(v.at)}
-              </div>
-
-              {/* The first version has nothing before it to differ from, so it
-                  shows what it said rather than what it changed. */}
-              {i === 0 ? (
-                <p className="hint" style={{ margin: '8px 0 0' }}>
-                  {v.description}
-                  {v.category && ` · ${v.category}`}
-                  {v.party && ` · ${v.party}`}
-                </p>
-              ) : (
-                <ul style={{ listStyle: 'none', margin: '4px 0 0', padding: 0, display: 'grid', gap: 6 }}>
-                  {v.changed.map((c) => (
-                    <li key={c.field} style={{ fontSize: 'var(--fs-tiny)', lineHeight: 1.5 }}>
-                      <b>{c.field}</b>{' '}
-                      <span
-                        className="muted"
-                        style={{ textDecoration: 'line-through', opacity: 0.75 }}
-                      >
-                        {c.from}
-                      </span>{' '}
-                      <Icon name="arrowRight" size={12} /> <b>{c.to}</b>
-                    </li>
-                  ))}
-                </ul>
-              )}
+          {data?.removed && (
+            <div style={{ marginBottom: 16 }}>
+              <Notice tone="warn" icon="trash" title="This entry has been removed">
+                {data.removed.by} removed it on {formatDateTime(data.removed.at)}. It is off
+                your figures, and still here.
+              </Notice>
             </div>
-          ))}
+          )}
+
+          {versions.length === 1 && !data?.removed && (
+            <p className="hint" style={{ margin: '0 0 14px' }}>
+              Never changed. It reads exactly as it was written.
+            </p>
+          )}
+
+          <ol className="tl">
+            {versions.map((v, i) => (
+              <li key={v.id} className={`tl-item${v.current ? ' now' : ''}`}>
+                <span className="tl-dot" aria-hidden="true" />
+                <div className="tl-top">
+                  <span className="tl-title">{i === 0 ? 'As entered' : `Correction ${i}`}</span>
+                  {v.current && <span className="tl-now">Current</span>}
+                  <span className="tl-amt">{money(v.totalCents, currency)}</span>
+                </div>
+                <div className="tl-meta">
+                  {v.by} · {formatDateTime(v.at)}
+                </div>
+
+                {/* The first version has nothing before it to differ from, so it
+                    shows what it said rather than what it changed. */}
+                {i === 0 ? (
+                  <div className="tl-note">
+                    {v.description}
+                    {v.category && ` · ${v.category}`}
+                    {v.party && ` · ${v.party}`}
+                  </div>
+                ) : (
+                  <ChangeList changes={v.changed} />
+                )}
+              </li>
+            ))}
+          </ol>
         </div>
 
-        <div style={{ marginTop: 22 }}>
-          <Notice icon="shield" title="Why every version is kept">
-            Correcting an entry writes a new version and cancels the old one, rather than
-            overwriting it. The books can be shown as they stood on any day, which is what the
-            CRA&apos;s six year rule asks for, and it means a figure that has moved can always
-            be explained.
-          </Notice>
+        {/* Correcting writes a new version and cancels the old one, so the books
+            can be shown as they stood on any day: the CRA's six year rule. */}
+        <div className="hist-foot">
+          <Icon name="shield" size={15} />
+          <span>Nothing is overwritten. Every version is kept.</span>
+          <button className="btn btn-sm" onClick={onClose}>
+            Close
+          </button>
         </div>
-
-        <button className="btn btn-block" style={{ marginTop: 18 }} onClick={onClose}>
-          Close
-        </button>
       </div>
     </div>
   );

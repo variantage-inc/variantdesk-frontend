@@ -117,21 +117,22 @@ export function AppShell({ crumb, children }: { crumb: string; children: React.R
           <div style={{ flex: 1 }} />
 
           {/* Staff only. The API refuses /api/admin to everyone else, so this
-              is a way in, not a guard. */}
-          {user?.platformRole === 'SUPERADMIN' && (
-            <Link className="btn btn-sm" href="/admin" style={{ marginRight: 10 }}>
+              is a way in, not a guard. The staff account is never billed, so
+              it gets this in place of the billing icon. */}
+          {user?.platformRole === 'SUPERADMIN' ? (
+            <Link className="btn btn-sm staff-link" href="/admin" style={{ marginRight: 10 }}>
               Superadmin
             </Link>
+          ) : (
+            <Link
+              className="iconbtn"
+              href="/settings#billing"
+              aria-label="Plan and billing"
+              title="Plan and billing"
+            >
+              <Icon name="card" size={21} sw={1.9} />
+            </Link>
           )}
-
-          <Link
-            className="iconbtn"
-            href="/settings#billing"
-            aria-label="Plan and billing"
-            title="Plan and billing"
-          >
-            <Icon name="card" size={21} sw={1.9} />
-          </Link>
 
           <div className="who">
             <span className="av">{initials(user?.firstName ?? '', user?.lastName ?? '')}</span>
