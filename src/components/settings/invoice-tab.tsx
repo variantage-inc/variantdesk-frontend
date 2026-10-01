@@ -33,13 +33,6 @@ const TERMS = [
   [0, 'Due on receipt'],
 ] as const;
 
-const INTEREST = [
-  [200, '2% per month'],
-  [150, '1.5% per month'],
-  [100, '1% per month'],
-  [0, 'None'],
-] as const;
-
 type Form = {
   invoicePrefix: string;
   nextInvoiceNumber: number;
@@ -183,18 +176,6 @@ export function InvoiceTab({
                     ))}
                   </Select>
                 </Field>
-                <Field label="Late payment interest">
-                  <Select
-                    value={v.lateInterestBp}
-                    onChange={(e) => draft.set('lateInterestBp', Number(e.target.value))}
-                  >
-                    {INTEREST.map(([bp, label]) => (
-                      <option key={bp} value={bp}>
-                        {label}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
               </div>
             </div>
 
@@ -209,6 +190,7 @@ export function InvoiceTab({
                 hint="Printed under the totals."
                 max={160}
                 rows={2}
+                placeholder="For example: Payment is due within 30 days of the invoice date. Late balances may be charged interest."
                 value={v.invoiceTerms}
                 error={errors.invoiceTerms}
                 onChange={(next) => draft.set('invoiceTerms', next)}
@@ -218,6 +200,7 @@ export function InvoiceTab({
                 hint="The last line on the page."
                 max={240}
                 rows={3}
+                placeholder="For example: Thank you for your business! Questions about this invoice? Email billing@yourbusiness.ca."
                 value={v.invoiceFooter}
                 error={errors.invoiceFooter}
                 onChange={(next) => draft.set('invoiceFooter', next)}
